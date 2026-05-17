@@ -1,0 +1,12 @@
+name: mod3_asr
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - ffmpeg
+  - pytorch=2.1
+  - torchaudio=2.1
+  - pytorch-cuda=12.1          # RTX 4070

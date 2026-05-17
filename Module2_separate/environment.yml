@@ -1,0 +1,30 @@
+name: mod2_separate
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  # 其他非 Python 系统依赖可以加在这里（如 ffmpeg），我们这里不需要
+  # PyTorch 由用户手动用官方 pip 安装，避免 DLL 问题
+  # 安装说明见文件末尾注释
+  # ========================= 安装说明 =========================
+# 1. 创建环境：
+#    conda env create -f environment.yml
+#
+# 2. 激活环境：
+#    conda activate mod2_separate
+#
+# 3. 根据你的显卡驱动选择 PyTorch 版本（三选一）：
+#    【NVIDIA GPU，CUDA 12.1】
+#    pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
+#
+#    【NVIDIA GPU，CUDA 11.8】
+#    pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
+#
+#    【仅 CPU】
+#    pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cpu
+#
+# 4. 安装模块剩余依赖：
+#    pip install -r requirements.txt
+# ===========================================================

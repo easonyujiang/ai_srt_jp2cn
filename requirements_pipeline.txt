@@ -1,0 +1,2 @@
+# requirements_pipeline.txt
+python-dotenv
