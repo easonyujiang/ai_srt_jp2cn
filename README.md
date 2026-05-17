@@ -74,11 +74,41 @@ cd Module6_translate && conda env create -f environment.yml && cd ..
 ```bash
 # 流水线主环境
 pip install -r requirements_pipeline.txt
+```
 
-# M2 - 音源分离（PyTorch 需手动安装，见 Module2_separate/README.md）
+#### M2 - 音源分离（需要手动安装 PyTorch）
+
+**重要：PyTorch 必须用官方 pip 安装，避免 Windows DLL 错误。**
+
+先安装基础依赖：
+```bash
 conda activate mod2_separate
 pip install -r Module2_separate/requirements.txt
+```
 
+然后根据你的硬件选择 PyTorch 版本：
+
+- **NVIDIA GPU（CUDA 12.1，推荐）**
+  ```bash
+  pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
+  ```
+
+- **NVIDIA GPU（CUDA 11.8）**
+  ```bash
+  pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu118
+  ```
+
+- **仅 CPU**
+  ```bash
+  pip install torch==2.1.0 torchvision==0.16.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cpu
+  ```
+
+验证安装：
+```bash
+python -c "import torch; print('CUDA available:', torch.cuda.is_available()); import demucs; print('Module 2 ready')"
+```
+
+```bash
 # M3 - ASR
 conda activate mod3_asr
 pip install -r Module3_asr/requirements.txt
@@ -150,9 +180,30 @@ python Module2_separate/separate.py input.wav vocals.wav
 ## 注意事项
 
 - **`.env` 文件包含 API 密钥，切勿提交到公开仓库**
-- M2 模块的 PyTorch 安装请参照 `Module2_separate/README.md` 中的说明
 - 首次运行 M3 会下载 WhisperX 模型（约 3GB），请保持网络畅通
 - 支持 HuggingFace 镜像站，在 `.env` 中设置 `HF_ENDPOINT=https://hf-mirror.com` 可加速下载
+
+## 常见问题
+
+### ImportError: DLL load failed (fbgemm.dll)
+
+Windows 缺少 Visual C++ 运行库或 PyTorch 安装不完整。
+
+**解决**：下载安装 [VC++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170)，然后确保使用官方 pip 安装 PyTorch（见上方 M2 安装步骤）。
+
+### 内存不足（OOM）
+
+处理大文件（>1小时）时进程被杀死。
+
+**缓解**：确保系统有 8GB 以上可用内存，关闭其他占用内存的程序。
+
+### 人声分离效果不理想
+
+模型默认使用 `htdemucs`，可在 `separate.py` 中将 `pretrained.get_model('htdemucs')` 改为 `htdemucs_ft` 或 `mdx_extra`（需先 `pip install demucs[all]`）。调整 `shifts` 参数（如 `shifts=3`）可提高质量，但更慢。
+
+### 无 GPU 时速度慢
+
+CPU 处理 1 小时音频约需 10~30 分钟。可考虑将输入音频切割为 10 分钟片段再处理。
 
 ## 许可证
 
