@@ -53,7 +53,12 @@ eval "$("$HOME/miniconda3/bin/conda" shell.bash hook 2>/dev/null || conda shell.
 
 # ----- 3. 克隆项目 -----
 section "[3/8] 项目仓库"
-PROJECT_DIR="$HOME/ai_srt_jp2cn"
+# CloudStudio 默认工作目录为 /workspace，其他平台用 $HOME/ai_srt_jp2cn
+if [ -d "/workspace" ] && [ -w "/workspace" ]; then
+    PROJECT_DIR="/workspace"
+else
+    PROJECT_DIR="$HOME/ai_srt_jp2cn"
+fi
 if [ -d "$PROJECT_DIR/.git" ]; then
     cd "$PROJECT_DIR"
     git pull --ff-only
@@ -116,11 +121,12 @@ create_env "mod2_separate" "Module2_separate" \
     "Module2_separate/requirements.txt" \
     "torch==2.1.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121"
 
-# M3: ASR WhisperX + PyTorch
+# M3: ASR WhisperX + PyTorch（注意顺序：先装 torch，再装 whisperx，最后锁定 numpy）
 conda create -n mod3_asr python=3.10 -y -q -c conda-forge
 conda run -n mod3_asr pip install -q \
     torch==2.1.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
 conda run -n mod3_asr pip install -q whisperx==3.1.1 python-dotenv
+conda run -n mod3_asr pip install -q "numpy<2" "transformers>=4.36.0,<4.46.0"
 check_ok "mod3_asr     (WhisperX ASR)"
 
 # M4: 文本规范化 (OpenAI SDK)
