@@ -121,11 +121,11 @@ create_env "mod2_separate" "Module2_separate" \
     "Module2_separate/requirements.txt" \
     "torch==2.1.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121"
 
-# M3: ASR WhisperX + PyTorch（注意顺序：先装 torch，再装 whisperx，最后锁定 numpy）
+# M3: ASR WhisperX + PyTorch（注意顺序：先装 torch，再装 whisperx，最后锁定版本）
 conda create -n mod3_asr python=3.10 -y -q -c conda-forge
 conda run -n mod3_asr pip install -q \
     torch==2.1.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
-conda run -n mod3_asr pip install -q whisperx==3.1.1 python-dotenv
+conda run -n mod3_asr pip install -q whisperx==3.1.1 python-dotenv matplotlib
 conda run -n mod3_asr pip install -q "numpy<2" "transformers>=4.36.0,<4.46.0"
 check_ok "mod3_asr     (WhisperX ASR)"
 
