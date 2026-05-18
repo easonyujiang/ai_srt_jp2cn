@@ -1,8 +1,13 @@
 """
 项目全局配置文件
 定义路径、环境名、模块脚本等，供 pipeline.py 使用
+兼容 Windows / Linux 双平台
 """
+import platform
+import subprocess
 from pathlib import Path
+
+_IS_WINDOWS = platform.system() == "Windows"
 
 # 项目根目录 (假设 config.py 位于项目根)
 ROOT_DIR = Path(__file__).resolve().parent
@@ -22,13 +27,46 @@ SUBTITLE_OUTPUT_DIR = ROOT_DIR / "subtitles"
 # 翻译后字幕输出目录（M6 生成）
 TRANSLATED_SUBTITLE_DIR = ROOT_DIR / "subtitles_translated"
 
-# ---------- Conda 环境信息 ----------
-# conda 环境根目录（根据你的实际安装修改）
-CONDA_ENVS_DIR = Path(r"C:\ProgramData\anaconda3\envs")
+# ---------- Conda 环境信息（跨平台适配） ----------
+
+def _detect_conda_envs_dir() -> Path:
+    if _IS_WINDOWS:
+        for candidate in [
+            r"C:\ProgramData\anaconda3\envs",
+            r"C:\ProgramData\miniconda3\envs",
+        ]:
+            p = Path(candidate)
+            if p.exists():
+                return p
+        return Path.home() / "anaconda3" / "envs"
+    else:
+        try:
+            result = subprocess.run(
+                ["conda", "info", "--base"],
+                capture_output=True, text=True, timeout=10
+            )
+            base = result.stdout.strip()
+            if base:
+                return Path(base) / "envs"
+        except Exception:
+            pass
+        for candidate in [
+            Path.home() / "miniconda3" / "envs",
+            Path.home() / "anaconda3" / "envs",
+            Path("/opt/conda/envs"),
+            Path("/root/miniconda3/envs"),
+        ]:
+            if candidate.exists():
+                return candidate
+        return Path.home() / "miniconda3" / "envs"
+
+CONDA_ENVS_DIR = _detect_conda_envs_dir()
 
 def _env_python(env_name: str) -> Path:
-    """返回指定 conda 环境的 python.exe 完整路径"""
-    return CONDA_ENVS_DIR / env_name / "python.exe"
+    if _IS_WINDOWS:
+        return CONDA_ENVS_DIR / env_name / "python.exe"
+    else:
+        return CONDA_ENVS_DIR / env_name / "bin" / "python"
 
 # =============== 模块环境与脚本 ===============
 

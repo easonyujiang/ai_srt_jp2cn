@@ -21,10 +21,10 @@
 
 ## 环境要求
 
-- **操作系统**：Windows（其他平台需调整 conda 路径配置）
+- **操作系统**：Windows / Linux（config.py 自动适配）
 - **Python**：3.10
 - **包管理**：Anaconda / Miniconda
-- **GPU**：推荐 NVIDIA GPU（≥8GB 显存），低显存自动分片处理
+- **GPU**：推荐 NVIDIA GPU（≥16GB 显存），低显存自动分片处理
 - **ffmpeg**：需可通过命令行调用
 
 ## 快速开始
@@ -122,15 +122,7 @@ conda activate mod6_translate
 pip install -r Module6_translate/requirements.txt
 ```
 
-### 5. 配置路径
-
-编辑 `config.py` 中的 `CONDA_ENVS_DIR`，指向你的 Anaconda 安装目录：
-
-```python
-CONDA_ENVS_DIR = Path(r"C:\ProgramData\anaconda3\envs")
-```
-
-### 6. 运行
+### 5. 运行（config.py 已自动适配平台，无需手动配置路径）
 
 #### GUI 模式
 
@@ -157,6 +149,28 @@ python Module1_demux/demux.py video.mp4 output.wav
 conda activate mod2_separate
 python Module2_separate/separate.py input.wav vocals.wav
 ```
+
+## ☁️ CloudStudio / AutoDL 云端一键部署
+
+适用于 腾讯 CloudStudio、AutoDL 等 GPU 算力平台。推荐 V100 32GB / RTX 3090 24GB / RTX 4090 24GB。
+
+```bash
+# 1. 终端输入以下唯一命令
+bash <(curl -sSL https://raw.githubusercontent.com/easonyujiang/ai_srt_jp2cn/master/deploy_cloud.sh)
+
+# 2. 按提示输入 API 密钥，等待安装完成
+
+# 3. 上传视频
+# 用 JupyterLab 文件管理器拖拽上传到 videos/ 目录
+
+# 4. 运行
+python pipeline.py videos/你的视频.mp4
+
+# 5. 用完关机
+sudo shutdown -h now
+```
+
+> 脚本自动完成：GPU 检测 → 安装 ffmpeg/Miniconda → 克隆仓库 → 创建 6 个独立环境 → 安装 PyTorch/Demucs/WhisperX → 配置 HF 镜像 → 验证安装
 
 ## 配置参数
 
