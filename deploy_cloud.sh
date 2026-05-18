@@ -126,7 +126,7 @@ conda create -n mod3_asr python=3.10 -y -q -c conda-forge
 conda run -n mod3_asr pip install -q \
     torch==2.1.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
 conda run -n mod3_asr pip install -q whisperx==3.1.1 python-dotenv matplotlib
-conda run -n mod3_asr pip install -q "numpy<2" "transformers>=4.36.0,<4.46.0" "faster-whisper<1.0" "ctranslate2>=3.20,<4.0"
+conda run -n mod3_asr pip install -q "numpy<2" "transformers>=4.36.0,<4.46.0" "faster-whisper==0.10.0" "ctranslate2>=3.20,<4.0"
 check_ok "mod3_asr     (WhisperX ASR)"
 
 # M4: 文本规范化 (OpenAI SDK)
