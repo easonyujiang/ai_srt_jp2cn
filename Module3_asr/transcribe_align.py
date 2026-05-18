@@ -96,7 +96,7 @@ def transcribe_and_align(
             "需要 HuggingFace 账号并接受 pyannote/speaker-diarization 模型协议。"
         )
 
-    if os.environ.get("HF_ENDPOINT") is None:
+    if os.environ.get("HF_ENDPOINT") is None and os.environ.get("HF_MIRROR"):
         os.environ["HF_ENDPOINT"] = DEFAULT_HF_MIRROR
         if verbose:
             print(f"[镜像] 使用 {DEFAULT_HF_MIRROR}")
