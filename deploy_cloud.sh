@@ -163,7 +163,7 @@ verify_env() {
 
 verify_env "mod1_demux"   "import subprocess; print(subprocess.run(['ffmpeg','-version'],capture_output=True).returncode==0 and 'ffmpeg OK')" "ffmpeg"
 verify_env "mod2_separate" "import torch; print(f'PyTorch {torch.__version__}, CUDA {torch.cuda.is_available()}, {torch.cuda.get_device_name(0)}')" "Demucs"
-verify_env "mod3_asr"     "import torch, whisperx; print(f'WhisperX {whisperx.__version__}, GPU: {torch.cuda.get_device_name(0)}')" "WhisperX"
+verify_env "mod3_asr"     "import torch, whisperx; print(f'GPU: {torch.cuda.get_device_name(0)}')" "WhisperX"
 verify_env "mod4_normalize" "from openai import OpenAI; print('openai OK')" "OpenAI SDK"
 verify_env "mod5_subtitle" "print('stdlib OK')" "标准库"
 verify_env "mod6_translate" "from openai import OpenAI; print('openai OK')" "OpenAI SDK"
@@ -172,17 +172,17 @@ if [ "$FAIL" -eq 1 ]; then
     warn "部分模块验证失败，请检查上方输出"
 fi
 
-# ----- 7. HuggingFace 镜像 -----
-section "[7/8] HuggingFace 镜像"
-if ! grep -q "HF_ENDPOINT" .env 2>/dev/null; then
-    cat >> .env <<'EOF'
-
-# 国内 HuggingFace 镜像加速
-HF_ENDPOINT=https://hf-mirror.com
-EOF
-    check_ok "已添加 HF_ENDPOINT=https://hf-mirror.com"
+# ----- 7. HuggingFace（腾讯云内可直连） -----
+section "[7/8] HuggingFace 连接测试"
+if conda run -n mod3_asr python -c "
+from huggingface_hub import hf_hub_download
+hf_hub_download('openai/whisper-large-v2','config.json',local_dir='/tmp/hf_test')
+" 2>/dev/null; then
+    check_ok "HuggingFace 直连正常（无需镜像）"
 else
-    check_ok "HF_ENDPOINT 已配置"
+    warn "HuggingFace 直连失败，尝试设置镜像..."
+    grep -q "HF_ENDPOINT" .env 2>/dev/null || echo "HF_ENDPOINT=https://hf-mirror.com" >> .env
+    check_ok "已配置 HF_ENDPOINT"
 fi
 
 # ----- 8. 完成 -----

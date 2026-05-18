@@ -170,7 +170,7 @@ python pipeline.py videos/你的视频.mp4
 sudo shutdown -h now
 ```
 
-> 脚本自动完成：GPU 检测 → 安装 ffmpeg/Miniconda → 克隆仓库 → 创建 6 个独立环境 → 安装 PyTorch/Demucs/WhisperX → 配置 HF 镜像 → 验证安装
+> 脚本自动完成：GPU 检测 → 安装系统依赖 → 克隆仓库 → 创建 6 个独立环境 → 安装 PyTorch/Demucs/WhisperX → 自动检测 HF 直连/镜像 → 验证安装
 
 ## 配置参数
 
@@ -195,7 +195,7 @@ sudo shutdown -h now
 
 - **`.env` 文件包含 API 密钥，切勿提交到公开仓库**
 - 首次运行 M3 会下载 WhisperX 模型（约 3GB），请保持网络畅通
-- 支持 HuggingFace 镜像站，在 `.env` 中设置 `HF_ENDPOINT=https://hf-mirror.com` 可加速下载
+- 腾讯云 / AutoDL 等国内算力平台通常可直接访问 HuggingFace。如果下载失败，在 `.env` 中添加 `HF_ENDPOINT=https://hf-mirror.com`
 
 ## 常见问题
 
