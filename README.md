@@ -78,10 +78,10 @@ pip install requests tqdm python-dotenv
 python download_models.py
 
 # 网络不稳定时可调整参数
-python download_models.py --retry 10    # 最多重试 10 次
-python download_models.py --no-mirror   # 直连 huggingface.co
-python download_models.py --skip-gated  # 仅下载公开模型
-python download_models.py --model whisper-large-v2  # 只下载某个模型
+python download_models.py --retry 10       # 最多重试 10 次
+python download_models.py --no-mirror      # 直连 huggingface.co
+python download_models.py --skip-gated     # 仅下载公开模型
+python download_models.py --repo openai/whisper-large-v2  # 下载指定仓库
 ```
 
 模型将下载到 `models_download/` 目录，M3 运行时会通过 `HF_HOME` 自动从 `models/` 目录加载。
