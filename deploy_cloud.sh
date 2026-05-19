@@ -173,10 +173,10 @@ if [ "$FAIL" -eq 1 ]; then
 fi
 
 # ----- 7. HuggingFace（腾讯云内可直连） -----
-section "[7/8] HuggingFace 连接测试"
+section "[7/9] HuggingFace 连接测试"
 if conda run -n mod3_asr python -c "
-from huggingface_hub import hf_hub_download
-hf_hub_download('openai/whisper-large-v2','config.json',local_dir='/tmp/hf_test')
+from huggingface_hub import list_models
+next(list_models(limit=1))
 " 2>/dev/null; then
     check_ok "HuggingFace 直连正常（无需镜像）"
 else
@@ -185,8 +185,26 @@ else
     check_ok "已配置 HF_ENDPOINT"
 fi
 
-# ----- 8. 完成 -----
-section "[8/8] 部署完成！"
+# ----- 8. 模型预下载（可选） -----
+section "[8/9] 模型预下载"
+echo ""
+echo "  首次运行 M3 时 WhisperX 会自动从 HF 下载约 10 GB 模型。"
+echo "  国内网络建议现在预下载（约 5-15 分钟）。"
+echo ""
+read -rp "  是否现在预下载模型? [Y/n] " DOWNLOAD_NOW
+DOWNLOAD_NOW=${DOWNLOAD_NOW:-Y}
+
+if [[ "$DOWNLOAD_NOW" =~ ^[Yy] ]]; then
+    echo ""
+    conda run -n mod3_asr pip install -q huggingface_hub tqdm python-dotenv 2>/dev/null || true
+    conda run -n mod3_asr python download_models.py --cache-dir models
+    check_ok "模型预下载完成"
+else
+    echo "  跳过。首次运行 M3 时会自动下载。"
+fi
+
+# ----- 9. 完成 -----
+section "[9/9] 部署完成！"
 
 echo ""
 echo "  使用方法："

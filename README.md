@@ -68,23 +68,29 @@ DEEPSEEK_API_KEY=sk-你的DeepSeek_API密钥
 
 ### 3. 预下载 M3 模型（推荐）
 
-M3（ASR 转写对齐）首次运行需从 HuggingFace 下载约 **10 GB** 模型文件。国内网络环境建议提前下载，避免运行时卡住。
+M3（ASR 转写对齐）首次运行需从 HuggingFace 下载约 **10 GB** 模型文件。国内网络环境建议提前下载。
 
 ```bash
-# 安装下载依赖（仅 requests + tqdm，无需 GPU）
-pip install requests tqdm python-dotenv
+# 使用 M3 环境运行（已有 huggingface_hub）
+conda activate mod3_asr
 
-# 下载全部 4 个模型（需 .env 中配置 HF_TOKEN）
+# 如需国内镜像加速，先在 .env 中设置
+# HF_ENDPOINT=https://hf-mirror.com
+
+# 下载全部 4 个模型（需 .env 中配置 HF_TOKEN 并完成门控授权）
 python download_models.py
 
-# 网络不稳定时可调整参数
-python download_models.py --retry 10       # 最多重试 10 次
-python download_models.py --no-mirror      # 直连 huggingface.co
-python download_models.py --skip-gated     # 仅下载公开模型
-python download_models.py --repo openai/whisper-large-v2  # 下载指定仓库
+# 可选参数
+python download_models.py --skip-gated              # 跳过门控模型
+python download_models.py --repo openai/whisper-large-v2  # 指定仓库
+python download_models.py --no-mirror               # 直连官方源
+python download_models.py --retry 5                 # 重试次数
+python download_models.py --cache-dir ./models      # 指定缓存目录
 ```
 
-模型将下载到 `models_download/` 目录，M3 运行时会通过 `HF_HOME` 自动从 `models/` 目录加载。
+模型下载到 `models/` 目录（HF 标准缓存格式），M3 运行时 WhisperX 会**自动识别**，无需额外配置。
+
+> **原理**：`download_models.py` 使用 `huggingface_hub.snapshot_download()` —— HuggingFace 官方下载接口，自动拉取仓库中所有模型文件并写入标准缓存结构。WhisperX 在运行时通过 `HF_HOME` 读取同一目录，直接命中缓存。
 
 | 模型 | 大小 | 说明 |
 |------|------|------|

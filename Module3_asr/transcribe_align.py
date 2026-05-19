@@ -109,6 +109,17 @@ def transcribe_and_align(
     os.environ["HF_HOME"] = str(cache)
     if verbose:
         print(f"[缓存] 模型目录: {cache}")
+        hub = cache / "hub"
+        cached_dirs = list(hub.glob("models--*/")) if hub.is_dir() else []
+        if cached_dirs:
+            print(f"[缓存] 已缓存 {len(cached_dirs)} 个模型")
+            for d in sorted(cached_dirs):
+                name = d.name.replace("models--", "").replace("--", "/")
+                has_snap = any(d.glob("snapshots/*/"))
+                print(f"[缓存]   {'✓' if has_snap else '○'} {name}")
+        else:
+            print("[缓存] 无已缓存模型，首次使用将自动下载 (~10 GB)")
+            print("[缓存] 可提前运行: python download_models.py")
 
     if min_speakers is None and max_speakers is None:
         if sys.stdin.isatty():
