@@ -67,12 +67,34 @@ MODELS = [
         "repo": "openai/whisper-large-v2",
         "gated": False,
         "description": "Whisper 语音识别 (large-v2, ~6.5 GB)",
+        "notes": "仓库含 4 种格式共 24 GB，仅下载 PyTorch",
+        "allow": [
+            "pytorch_model.bin",       # 6.17 GB - 模型权重
+            "config.json",
+            "tokenizer.json",
+            "preprocessor_config.json",
+            "added_tokens.json",
+            "normalizer.json",
+            "vocab.json",
+            "merges.txt",
+            "special_tokens_map.json",
+            "tokenizer_config.json",
+            "generation_config.json",
+        ],
     },
     {
         "key": "wav2vec2-xlsr-53-japanese",
         "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
         "gated": False,
         "description": "Wav2Vec2 词级对齐 (日语, ~1.2 GB)",
+        "notes": "跳过 flax_model.msgpack",
+        "allow": [
+            "pytorch_model.bin",
+            "config.json",
+            "preprocessor_config.json",
+            "special_tokens_map.json",
+            "vocab.json",
+        ],
     },
     {
         "key": "segmentation-3.0",
@@ -80,6 +102,10 @@ MODELS = [
         "gated": True,
         "gated_prompt": "https://hf-mirror.com/pyannote/segmentation-3.0",
         "description": "Pyannote 语音活动检测 (segmentation-3.0, ~380 MB)",
+        "allow": [
+            "pytorch_model.bin",
+            "config.yaml",
+        ],
     },
     {
         "key": "speaker-diarization-3.1",
@@ -87,6 +113,11 @@ MODELS = [
         "gated": True,
         "gated_prompt": "https://hf-mirror.com/pyannote/speaker-diarization-3.1",
         "description": "Pyannote 说话人分割 Pipeline (~数 MB, 不含权重)",
+        "allow": [
+            "config.yaml",
+            "handler.py",
+            "requirements.txt",
+        ],
     },
 ]
 
@@ -112,10 +143,13 @@ def _check_gated(repo: str, gated_prompt: str) -> bool:
     return True
 
 
-def download_repo(repo: str, cache_dir: Path, gated: bool = False,
-                  prompt_url: str = "", max_retries: int = 3) -> bool:
+def download_repo(repo: str, cache_dir: Path, allow_patterns: list = None,
+                  gated: bool = False, prompt_url: str = "",
+                  max_retries: int = 3) -> bool:
     logger.info("  仓库: %s", repo)
     logger.info("  目录: %s", cache_dir)
+    if allow_patterns:
+        logger.info("  文件: %s", ", ".join(allow_patterns))
 
     if gated and not HAS_TOKEN:
         logger.info("  → 跳过（门控模型需要 HF_TOKEN）")
@@ -125,6 +159,11 @@ def download_repo(repo: str, cache_dir: Path, gated: bool = False,
         return False
 
     last_error = None
+    base_ignore = ["*.eval", "*.rttm", ".gitattributes", ".github/**",
+                   "reproducible_research/**", "*.msgpack", "*.h5",
+                   "*.safetensors", "*.png", "LICENSE", "README.md",
+                   "example.png", ".github/**"]
+
     for attempt in range(1, max_retries + 1):
         if attempt > 1:
             wait = min(2 ** (attempt - 1), 30)
@@ -135,18 +174,18 @@ def download_repo(repo: str, cache_dir: Path, gated: bool = False,
             os.environ["HF_HOME"] = str(cache_dir)
             local_dir = cache_dir / "hub"
 
-            snapshot_download(
+            kwargs = dict(
                 repo_id=repo,
                 token=HF_TOKEN,
                 local_dir=local_dir,
                 max_workers=4,
-                ignore_patterns=[
-                    "*.eval", "*.rttm",
-                    ".gitattributes",
-                    ".github/**",
-                    "reproducible_research/**",
-                ],
             )
+            if allow_patterns:
+                kwargs["allow_patterns"] = allow_patterns
+            else:
+                kwargs["ignore_patterns"] = base_ignore
+
+            snapshot_download(**kwargs)
             logger.info("  ✓ 下载完成")
             return True
 
@@ -249,6 +288,7 @@ def main():
         success = download_repo(
             repo=m["repo"],
             cache_dir=cache_dir,
+            allow_patterns=m.get("allow"),
             gated=m["gated"],
             prompt_url=m.get("gated_prompt", ""),
             max_retries=args.retry,
