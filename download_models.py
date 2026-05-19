@@ -144,7 +144,7 @@ def download_repo(repo: str, cache_dir: Path, allow_patterns: list = None,
         logger.info("  → 跳过（权限检查未通过）")
         return False
 
-    os.environ["HF_HOME"] = str(cache_dir)
+    os.environ["HF_HOME"] = str(cache_dir.resolve())
 
     last_error = None
     for attempt in range(1, max_retries + 1):

@@ -44,6 +44,53 @@ def get_gpu_vram_gb():
         return 0
 
 
+def _ensure_models_cached(verbose=True):
+    """使用 snapshot_download 预下载模型，绕过 faster-whisper 内部下载 301 问题"""
+    from huggingface_hub import snapshot_download
+    from huggingface_hub.utils import HfHubHTTPError
+
+    token = os.environ.get("HF_TOKEN", "").strip()
+    if not token or "你的" in token or "hf_" not in token:
+        token = None
+
+    models = [
+        {
+            "repo": "Systran/faster-whisper-large-v2",
+            "desc": "Faster-Whisper CT2 模型",
+            "allow": ["model.bin", "config.json", "tokenizer.json",
+                      "preprocessor_config.json", "vocabulary.json"],
+        },
+        {
+            "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
+            "desc": "Wav2Vec2 词级对齐 (日语)",
+            "allow": ["pytorch_model.bin", "config.json",
+                      "preprocessor_config.json", "special_tokens_map.json",
+                      "vocab.json"],
+        },
+    ]
+
+    for m in models:
+        try:
+            snapshot_download(
+                repo_id=m["repo"],
+                token=token,
+                allow_patterns=m["allow"],
+                max_workers=4,
+            )
+            if verbose:
+                print(f"[缓存] {m['desc']} 已就绪")
+        except HfHubHTTPError as e:
+            code = getattr(getattr(e, "response", None), "status_code", 0)
+            if code == 401:
+                raise RuntimeError(
+                    f"{m['desc']}: 需要有效的 HF_TOKEN\n"
+                    "请在 .env 中设置 HF_TOKEN"
+                ) from e
+            raise RuntimeError(f"{m['desc']} 下载失败: {e}") from e
+        except Exception as e:
+            raise RuntimeError(f"{m['desc']} 下载失败: {e}") from e
+
+
 def report_progress(percent: float, message: str = ""):
     sys.stderr.write(f"PROGRESS: {percent:.1f}% {message}\n")
     sys.stderr.flush()
@@ -148,6 +195,8 @@ def transcribe_and_align(
         else:
             min_speakers = 1
             max_speakers = 5
+
+    _ensure_models_cached(verbose=verbose)
 
     report_progress(0.0, "加载 ASR 模型...")
 
