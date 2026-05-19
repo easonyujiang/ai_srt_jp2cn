@@ -1,20 +1,14 @@
 #!/usr/bin/env python3
 """
-备用模型下载器 - 使用 huggingface_hub 官方接口
+备用模型下载器 - 使用 huggingface_hub.snapshot_download 写入标准 HF 缓存
 
-优势（对比手动 requests 下载）：
-  - snapshot_download() 自动拉取仓库所有文件，永不错漏
-  - 写入标准 HF 缓存结构 (~/models/hub/models--org--repo/)，WhisperX 运行时直接识别
-  - 自动处理 .lock / symlink / 增量更新
-  - 门控模型通过 token 参数自动鉴权
-  - 镜像通过 HF_ENDPOINT 环境变量切换
-  - tqdm 进度条 + 多线程断点续传
-  - 内置重试机制，抗网络波动
+  下载的每个仓库自动写入 {HF_HOME}/hub/models--org--repo/snapshots/xxx/
+  WhisperX / faster-whisper / transformers / pyannote 运行时同一套缓存，零配置
 
-用法：
-  python download_models.py                          # 下载全部 4 个模型
+用法:
+  python download_models.py                          # 下载全部 5 个模型
   python download_models.py --skip-gated             # 跳过门控模型
-  python download_models.py --repo openai/whisper-large-v2   # 指定仓库
+  python download_models.py --repo Systran/faster-whisper-large-v2  # 指定仓库
   python download_models.py --no-mirror              # 直连 huggingface.co
   python download_models.py --list                   # 列出模型
 """
@@ -48,12 +42,11 @@ logger = logging.getLogger("downloader")
 DEFAULT_CACHE_DIR = PROJECT / "models"
 
 HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()
-if HF_TOKEN and "你的" not in HF_TOKEN and "hf_" in HF_TOKEN:
+HAS_TOKEN = bool(HF_TOKEN and "你的" not in HF_TOKEN and "hf_" in HF_TOKEN)
+if HAS_TOKEN:
     logger.info("HF_TOKEN 已加载: %s...", HF_TOKEN[:12])
-    HAS_TOKEN = True
 else:
     HF_TOKEN = None
-    HAS_TOKEN = False
 
 MIRROR = os.environ.get("HF_ENDPOINT", "")
 if MIRROR:
@@ -63,38 +56,21 @@ else:
 
 MODELS = [
     {
-        "key": "whisper-large-v2",
-        "repo": "openai/whisper-large-v2",
+        "key": "faster-whisper-large-v2",
+        "repo": "Systran/faster-whisper-large-v2",
         "gated": False,
-        "description": "Whisper 语音识别 (large-v2, ~6.5 GB)",
-        "notes": "仓库含 4 种格式共 24 GB，仅下载 PyTorch",
-        "allow": [
-            "pytorch_model.bin",       # 6.17 GB - 模型权重
-            "config.json",
-            "tokenizer.json",
-            "preprocessor_config.json",
-            "added_tokens.json",
-            "normalizer.json",
-            "vocab.json",
-            "merges.txt",
-            "special_tokens_map.json",
-            "tokenizer_config.json",
-            "generation_config.json",
-        ],
+        "description": "Faster-Whisper CT2 模型 (WhisperX 核心, ~3 GB)",
+        "allow": ["model.bin", "config.json", "tokenizer.json",
+                  "preprocessor_config.json", "vocabulary.json"],
     },
     {
         "key": "wav2vec2-xlsr-53-japanese",
         "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
         "gated": False,
         "description": "Wav2Vec2 词级对齐 (日语, ~1.2 GB)",
-        "notes": "跳过 flax_model.msgpack",
-        "allow": [
-            "pytorch_model.bin",
-            "config.json",
-            "preprocessor_config.json",
-            "special_tokens_map.json",
-            "vocab.json",
-        ],
+        "allow": ["pytorch_model.bin", "config.json",
+                  "preprocessor_config.json", "special_tokens_map.json",
+                  "vocab.json"],
     },
     {
         "key": "segmentation-3.0",
@@ -102,22 +78,26 @@ MODELS = [
         "gated": True,
         "gated_prompt": "https://hf-mirror.com/pyannote/segmentation-3.0",
         "description": "Pyannote 语音活动检测 (segmentation-3.0, ~380 MB)",
-        "allow": [
-            "pytorch_model.bin",
-            "config.yaml",
-        ],
+        "allow": ["pytorch_model.bin", "config.yaml"],
     },
     {
         "key": "speaker-diarization-3.1",
         "repo": "pyannote/speaker-diarization-3.1",
         "gated": True,
         "gated_prompt": "https://hf-mirror.com/pyannote/speaker-diarization-3.1",
-        "description": "Pyannote 说话人分割 Pipeline (~数 MB, 不含权重)",
-        "allow": [
-            "config.yaml",
-            "handler.py",
-            "requirements.txt",
-        ],
+        "description": "Pyannote 说话人分割 Pipeline",
+        "allow": ["config.yaml", "handler.py", "requirements.txt"],
+    },
+    {
+        "key": "whisper-large-v2",
+        "repo": "openai/whisper-large-v2",
+        "gated": False,
+        "description": "Whisper 原始模型 (tokenizer/pyannote 参考, ~6.5 GB)",
+        "allow": ["pytorch_model.bin", "config.json", "tokenizer.json",
+                  "preprocessor_config.json", "added_tokens.json",
+                  "normalizer.json", "vocab.json", "merges.txt",
+                  "special_tokens_map.json", "tokenizer_config.json",
+                  "generation_config.json"],
     },
 ]
 
@@ -125,9 +105,7 @@ MODELS = [
 def format_duration(seconds: float) -> str:
     m, s = divmod(int(seconds), 60)
     h, m = divmod(m, 60)
-    if h:
-        return f"{h}h{m:02d}m{s:02d}s"
-    return f"{m}m{s:02d}s"
+    return f"{h}h{m:02d}m{s:02d}s" if h else f"{m}m{s:02d}s"
 
 
 def _check_gated(repo: str, gated_prompt: str) -> bool:
@@ -143,6 +121,14 @@ def _check_gated(repo: str, gated_prompt: str) -> bool:
     return True
 
 
+BASE_IGNORE = [
+    "*.eval", "*.rttm", ".gitattributes", ".github/**",
+    "reproducible_research/**", "*.msgpack", "*.h5",
+    "*.safetensors", "*.png", "LICENSE", "*.md",
+    "example.*", "flax_model.*", "tf_model.*",
+]
+
+
 def download_repo(repo: str, cache_dir: Path, allow_patterns: list = None,
                   gated: bool = False, prompt_url: str = "",
                   max_retries: int = 3) -> bool:
@@ -152,18 +138,15 @@ def download_repo(repo: str, cache_dir: Path, allow_patterns: list = None,
         logger.info("  文件: %s", ", ".join(allow_patterns))
 
     if gated and not HAS_TOKEN:
-        logger.info("  → 跳过（门控模型需要 HF_TOKEN）")
+        logger.info("  → 跳过（需要 HF_TOKEN）")
         return False
     if gated and prompt_url and not _check_gated(repo, prompt_url):
         logger.info("  → 跳过（权限检查未通过）")
         return False
 
-    last_error = None
-    base_ignore = ["*.eval", "*.rttm", ".gitattributes", ".github/**",
-                   "reproducible_research/**", "*.msgpack", "*.h5",
-                   "*.safetensors", "*.png", "LICENSE", "README.md",
-                   "example.png", ".github/**"]
+    os.environ["HF_HOME"] = str(cache_dir)
 
+    last_error = None
     for attempt in range(1, max_retries + 1):
         if attempt > 1:
             wait = min(2 ** (attempt - 1), 30)
@@ -171,28 +154,24 @@ def download_repo(repo: str, cache_dir: Path, allow_patterns: list = None,
             time.sleep(wait)
 
         try:
-            os.environ["HF_HOME"] = str(cache_dir)
-            local_dir = cache_dir / "hub"
-
             kwargs = dict(
                 repo_id=repo,
                 token=HF_TOKEN,
-                local_dir=local_dir,
+                cache_dir=str(cache_dir),
                 max_workers=4,
             )
             if allow_patterns:
                 kwargs["allow_patterns"] = allow_patterns
             else:
-                kwargs["ignore_patterns"] = base_ignore
+                kwargs["ignore_patterns"] = BASE_IGNORE
 
-            snapshot_download(**kwargs)
-            logger.info("  ✓ 下载完成")
+            path = snapshot_download(**kwargs)
+            logger.info("  ✓ 下载完成 → %s", path)
             return True
 
         except HfHubHTTPError as e:
             last_error = e
-            status = getattr(e, "response", None)
-            code = status.status_code if status else 0
+            code = getattr(getattr(e, "response", None), "status_code", 0)
             if code == 401:
                 logger.error("  ✗ 401 未授权")
                 if gated and prompt_url:
@@ -220,8 +199,8 @@ def main():
 示例:
   python download_models.py                        # 下载全部
   python download_models.py --skip-gated           # 跳过门控模型
-  python download_models.py --repo openai/whisper-large-v2   # 指定仓库
-  python download_models.py --no-mirror            # 禁用镜像，直连 huggingface.co
+  python download_models.py --repo Systran/faster-whisper-large-v2
+  python download_models.py --no-mirror            # 直连 huggingface.co
   python download_models.py --list                 # 列出模型
 
 环境变量:
@@ -229,18 +208,12 @@ def main():
   HF_ENDPOINT     镜像地址（如 https://hf-mirror.com）
         """,
     )
-    parser.add_argument("--repo", type=str, default=None,
-                        help="只下载指定仓库")
-    parser.add_argument("--skip-gated", action="store_true",
-                        help="跳过门控模型")
-    parser.add_argument("--no-mirror", action="store_true",
-                        help="禁用镜像")
-    parser.add_argument("--cache-dir", type=str, default=str(DEFAULT_CACHE_DIR),
-                        help=f"缓存目录（默认: {DEFAULT_CACHE_DIR}）")
-    parser.add_argument("--retry", type=int, default=3,
-                        help="最大重试次数（默认 3）")
-    parser.add_argument("--list", action="store_true",
-                        help="列出模型清单后退出")
+    parser.add_argument("--repo", type=str, default=None)
+    parser.add_argument("--skip-gated", action="store_true")
+    parser.add_argument("--no-mirror", action="store_true")
+    parser.add_argument("--cache-dir", type=str, default=str(DEFAULT_CACHE_DIR))
+    parser.add_argument("--retry", type=int, default=3)
+    parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
 
     if args.list:
@@ -264,9 +237,9 @@ def main():
 
     if not HAS_TOKEN:
         logger.warning("未配置 HF_TOKEN，门控模型将跳过")
-        logger.warning("在 .env 中设置 HF_TOKEN 即可下载门控模型")
 
     logger.info("缓存目录: %s", cache_dir)
+    logger.info("缓存结构: hub/models--org--repo/snapshots/xxx/ (标准 HF 格式)")
     logger.info("")
 
     total_ok = 0
@@ -304,7 +277,7 @@ def main():
     logger.info("全部完成: 成功 %d, 失败 %d, 耗时 %s",
                  total_ok, total_fail, format_duration(total_elapsed))
     logger.info("缓存目录: %s", cache_dir)
-    logger.info("注意: 运行时请确保 HF_HOME 指向此目录")
+    logger.info("下一步: 运行 pipeline.py 时 M3 会自动命中缓存")
     logger.info("=" * 60)
 
     if total_fail > 0:

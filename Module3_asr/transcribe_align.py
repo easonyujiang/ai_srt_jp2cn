@@ -30,7 +30,16 @@ def get_gpu_vram_gb():
         return 0
     try:
         total_bytes = torch.cuda.get_device_properties(0).total_mem
-        return total_bytes / (1024 ** 3)
+        vram = total_bytes / (1024 ** 3)
+        if vram < 1.0:
+            try:
+                import subprocess
+                r = subprocess.run(["nvidia-smi", "--query-gpu=memory.total",
+                    "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10)
+                vram = float(r.stdout.strip().split("\n")[0]) / 1024.0
+            except Exception:
+                vram = max(vram, 16.0)
+        return vram
     except Exception:
         return 0
 
@@ -112,14 +121,17 @@ def transcribe_and_align(
         hub = cache / "hub"
         cached_dirs = list(hub.glob("models--*/")) if hub.is_dir() else []
         if cached_dirs:
-            print(f"[缓存] 已缓存 {len(cached_dirs)} 个模型")
-            for d in sorted(cached_dirs):
-                name = d.name.replace("models--", "").replace("--", "/")
-                has_snap = any(d.glob("snapshots/*/"))
-                print(f"[缓存]   {'✓' if has_snap else '○'} {name}")
+            print(f"[缓存] 已缓存 {len(cached_dirs)} 个模型（标准 HF 格式）")
         else:
-            print("[缓存] 无已缓存模型，首次使用将自动下载 (~10 GB)")
-            print("[缓存] 可提前运行: python download_models.py")
+            bins = list(hub.rglob("*.bin")) + list(hub.rglob("*.safetensors"))
+            yamls = list(hub.rglob("config.yaml"))
+            if bins or yamls:
+                print(f"[缓存] 检测到 {len(bins)} 个 .bin + {len(yamls)} 个 config.yaml（非标准结构）")
+                print("[缓存] 建议删除旧缓存后重新下载:")
+                print("[缓存]   rm -rf models/hub && python download_models.py")
+            else:
+                print("[缓存] 无已缓存模型，首次使用将自动下载 (~13 GB)")
+                print("[缓存] 可提前运行: python download_models.py")
 
     if min_speakers is None and max_speakers is None:
         if sys.stdin.isatty():

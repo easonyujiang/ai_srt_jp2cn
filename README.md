@@ -68,7 +68,7 @@ DEEPSEEK_API_KEY=sk-你的DeepSeek_API密钥
 
 ### 3. 预下载 M3 模型（推荐）
 
-M3（ASR 转写对齐）首次运行需从 HuggingFace 下载约 **10 GB** 模型文件。国内网络环境建议提前下载。
+M3（ASR 转写对齐）首次运行需从 HuggingFace 下载约 **13 GB** 模型文件（5 个仓库）。国内网络环境建议提前下载。
 
 ```bash
 # 使用 M3 环境运行（已有 huggingface_hub）
@@ -77,7 +77,7 @@ conda activate mod3_asr
 # 如需国内镜像加速，先在 .env 中设置
 # HF_ENDPOINT=https://hf-mirror.com
 
-# 下载全部 4 个模型（需 .env 中配置 HF_TOKEN 并完成门控授权）
+# 下载全部 5 个模型（需 .env 中配置 HF_TOKEN 并完成门控授权）
 python download_models.py
 
 # 可选参数
@@ -94,10 +94,17 @@ python download_models.py --cache-dir ./models      # 指定缓存目录
 
 | 模型 | 大小 | 说明 |
 |------|------|------|
-| `openai/whisper-large-v2` | ~6.5 GB | 语音识别 |
-| `pyannote/speaker-diarization-3.1` | ~800 MB | 说话人分离（门控）|
-| `pyannote/segmentation-3.0` | ~380 MB | 语音活动检测（门控）|
+| `Systran/faster-whisper-large-v2` | ~3 GB | Faster-Whisper CT2 (WhisperX 实际调用) |
+| `openai/whisper-large-v2` | ~6.5 GB | Whisper 原始模型 (tokenizer 等) |
 | `wav2vec2-large-xlsr-53-japanese` | ~1.2 GB | 词级对齐 |
+| `pyannote/segmentation-3.0` | ~380 MB | 语音活动检测（门控）|
+| `pyannote/speaker-diarization-3.1` | 数 MB | 说话人分割 Pipeline（门控）|
+
+> **注意**：如果之前用旧版下载过模型（扁平结构 `hub/pytorch_model.bin`），需清理后重下：
+> ```bash
+> rm -rf models/hub
+> python download_models.py
+> ```
 
 ### 4. 创建 Conda 环境
 
