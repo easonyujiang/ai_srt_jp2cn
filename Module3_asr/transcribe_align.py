@@ -214,43 +214,51 @@ def transcribe_and_align(
 
     report_progress(0.0, "加载 ASR 模型...")
 
-    # ======== 阶段 1: ASR 转写 ========
-    if verbose:
-        print(f"[Module 3] 加载语音识别模型 '{model_name}' ...")
-    asr_options = {"word_timestamps": True}
-    model = whisperx.load_model(
-        str(asr_model_path), device, compute_type=compute_type,
-        language=language, asr_options=asr_options
-    )
-    audio = whisperx.load_audio(str(audio_file))
-
-    report_progress(15.0, "语音识别中...")
-    if verbose:
-        print("[Module 3] 进行语音识别...")
-    result = model.transcribe(audio, batch_size=16)
-
-    if low_vram:
+    _prev_offline = os.environ.get("HF_HUB_OFFLINE")
+    os.environ["HF_HUB_OFFLINE"] = "1"
+    try:
+        # ======== 阶段 1: ASR 转写 ========
         if verbose:
-            print("[Module 3] 释放 ASR 模型...")
-        del model
-        torch.cuda.empty_cache()
+            print(f"[Module 3] 加载语音识别模型 '{model_name}' ...")
+        asr_options = {"word_timestamps": True}
+        model = whisperx.load_model(
+            str(asr_model_path), device, compute_type=compute_type,
+            language=language, asr_options=asr_options
+        )
+        audio = whisperx.load_audio(str(audio_file))
 
-    # ======== 阶段 2: 词级对齐 ========
-    report_progress(35.0, "加载对齐模型...")
-    if verbose:
-        print("[Module 3] 加载对齐模型 (wav2vec2) ...")
-    model_a, metadata = whisperx.load_align_model(
-        language_code=language, device=device
-    )
-    result_aligned = whisperx.align(
-        result["segments"], model_a, metadata, audio, device,
-        return_char_alignments=False
-    )
+        report_progress(15.0, "语音识别中...")
+        if verbose:
+            print("[Module 3] 进行语音识别...")
+        result = model.transcribe(audio, batch_size=16)
 
-    report_progress(55.0, "对齐完成")
-    if low_vram:
-        del model_a
-        torch.cuda.empty_cache()
+        if low_vram:
+            if verbose:
+                print("[Module 3] 释放 ASR 模型...")
+            del model
+            torch.cuda.empty_cache()
+
+        # ======== 阶段 2: 词级对齐 ========
+        report_progress(35.0, "加载对齐模型...")
+        if verbose:
+            print("[Module 3] 加载对齐模型 (wav2vec2) ...")
+        model_a, metadata = whisperx.load_align_model(
+            language_code=language, device=device
+        )
+        result_aligned = whisperx.align(
+            result["segments"], model_a, metadata, audio, device,
+            return_char_alignments=False
+        )
+
+        report_progress(55.0, "对齐完成")
+        if low_vram:
+            del model_a
+            torch.cuda.empty_cache()
+    finally:
+        if _prev_offline is None:
+            os.environ.pop("HF_HUB_OFFLINE", None)
+        else:
+            os.environ["HF_HUB_OFFLINE"] = _prev_offline
 
     # ======== 阶段 3: 说话人分离 ========
     report_progress(60.0, "加载说话人分离模型...")
