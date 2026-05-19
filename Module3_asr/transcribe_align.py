@@ -45,7 +45,11 @@ def get_gpu_vram_gb():
 
 
 def _ensure_models_cached(verbose=True):
-    """使用 snapshot_download 预下载模型，绕过 faster-whisper 内部下载 301 问题"""
+    """使用 snapshot_download 预下载模型，绕过 faster-whisper 内部下载 301 问题
+
+    Returns:
+        Path: faster-whisper 模型的本地路径，可直接传给 whisperx.load_model()
+    """
     from huggingface_hub import snapshot_download
     from huggingface_hub.utils import HfHubHTTPError
 
@@ -53,12 +57,15 @@ def _ensure_models_cached(verbose=True):
     if not token or "你的" in token or "hf_" not in token:
         token = None
 
+    asr_model_path = None
+
     models = [
         {
             "repo": "Systran/faster-whisper-large-v2",
             "desc": "Faster-Whisper CT2 模型",
             "allow": ["model.bin", "config.json", "tokenizer.json",
                       "preprocessor_config.json", "vocabulary.json"],
+            "is_asr": True,
         },
         {
             "repo": "jonatasgrosman/wav2vec2-large-xlsr-53-japanese",
@@ -66,17 +73,20 @@ def _ensure_models_cached(verbose=True):
             "allow": ["pytorch_model.bin", "config.json",
                       "preprocessor_config.json", "special_tokens_map.json",
                       "vocab.json"],
+            "is_asr": False,
         },
     ]
 
     for m in models:
         try:
-            snapshot_download(
+            local_path = snapshot_download(
                 repo_id=m["repo"],
                 token=token,
                 allow_patterns=m["allow"],
                 max_workers=4,
             )
+            if m.get("is_asr"):
+                asr_model_path = Path(local_path)
             if verbose:
                 print(f"[缓存] {m['desc']} 已就绪")
         except HfHubHTTPError as e:
@@ -89,6 +99,10 @@ def _ensure_models_cached(verbose=True):
             raise RuntimeError(f"{m['desc']} 下载失败: {e}") from e
         except Exception as e:
             raise RuntimeError(f"{m['desc']} 下载失败: {e}") from e
+
+    if asr_model_path is None:
+        raise RuntimeError("ASR 模型下载失败")
+    return asr_model_path
 
 
 def report_progress(percent: float, message: str = ""):
@@ -196,7 +210,7 @@ def transcribe_and_align(
             min_speakers = 1
             max_speakers = 5
 
-    _ensure_models_cached(verbose=verbose)
+    asr_model_path = _ensure_models_cached(verbose=verbose)
 
     report_progress(0.0, "加载 ASR 模型...")
 
@@ -205,7 +219,7 @@ def transcribe_and_align(
         print(f"[Module 3] 加载语音识别模型 '{model_name}' ...")
     asr_options = {"word_timestamps": True}
     model = whisperx.load_model(
-        model_name, device, compute_type=compute_type,
+        str(asr_model_path), device, compute_type=compute_type,
         language=language, asr_options=asr_options
     )
     audio = whisperx.load_audio(str(audio_file))
