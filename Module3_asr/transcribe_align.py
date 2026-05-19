@@ -105,6 +105,36 @@ def _ensure_models_cached(verbose=True):
     return asr_model_path
 
 
+def _patch_faster_whisper_local():
+    """monkey-patch: 让 faster-whisper 识别本地 snapshot 目录,避免误当 repo_id 发起 301"""
+    import faster_whisper.utils as fw_utils
+    _orig = fw_utils.download_model
+
+    def _patched(size_or_id, output_dir=None, local_files_only=False, cache_dir=None,
+                 **_kw):
+        if isinstance(size_or_id, (str, os.PathLike)) and os.path.isdir(str(size_or_id)):
+            return str(size_or_id)
+        kwargs = {}
+        if output_dir is not None:
+            kwargs["output_dir"] = output_dir
+        if cache_dir is not None:
+            kwargs["cache_dir"] = cache_dir
+        kwargs["local_files_only"] = True
+        try:
+            return _orig(size_or_id, **kwargs)
+        except Exception:
+            kwargs["local_files_only"] = False
+            return _orig(size_or_id, **kwargs)
+
+    fw_utils.download_model = _patched
+    return _orig
+
+
+def _unpatch_faster_whisper(original_fn):
+    import faster_whisper.utils as fw_utils
+    fw_utils.download_model = original_fn
+
+
 def report_progress(percent: float, message: str = ""):
     sys.stderr.write(f"PROGRESS: {percent:.1f}% {message}\n")
     sys.stderr.flush()
@@ -214,8 +244,9 @@ def transcribe_and_align(
 
     report_progress(0.0, "加载 ASR 模型...")
 
-    _prev_offline = os.environ.get("HF_HUB_OFFLINE")
-    os.environ["HF_HUB_OFFLINE"] = "1"
+    _fw_orig = _patch_faster_whisper_local()
+    _prev_tsf = os.environ.get("TRANSFORMERS_OFFLINE")
+    os.environ["TRANSFORMERS_OFFLINE"] = "1"
     try:
         # ======== 阶段 1: ASR 转写 ========
         if verbose:
@@ -255,10 +286,11 @@ def transcribe_and_align(
             del model_a
             torch.cuda.empty_cache()
     finally:
-        if _prev_offline is None:
-            os.environ.pop("HF_HUB_OFFLINE", None)
+        _unpatch_faster_whisper(_fw_orig)
+        if _prev_tsf is None:
+            os.environ.pop("TRANSFORMERS_OFFLINE", None)
         else:
-            os.environ["HF_HUB_OFFLINE"] = _prev_offline
+            os.environ["TRANSFORMERS_OFFLINE"] = _prev_tsf
 
     # ======== 阶段 3: 说话人分离 ========
     report_progress(60.0, "加载说话人分离模型...")
