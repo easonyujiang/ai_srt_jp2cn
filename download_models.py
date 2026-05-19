@@ -100,20 +100,22 @@ MODELS = {
         "repo": "pyannote/speaker-diarization-3.1",
         "dir": "diarization",
         "gated": True,
+        "gated_accept_url": "https://hf-mirror.com/pyannote/speaker-diarization-3.1",
         "description": "Pyannote 说话人分割 (diarization-3.1, ~800 MB)",
         "files": [
             "pytorch_model.bin",
-            "config.json",
+            "config.yaml",
         ],
     },
     "segmentation-3.0": {
         "repo": "pyannote/segmentation-3.0",
         "dir": "segmentation",
         "gated": True,
+        "gated_accept_url": "https://hf-mirror.com/pyannote/segmentation-3.0",
         "description": "Pyannote 语音活动检测 (segmentation-3.0, ~380 MB)",
         "files": [
             "pytorch_model.bin",
-            "config.json",
+            "config.yaml",
         ],
     },
     "wav2vec2-xlsr-53-japanese": {
@@ -155,6 +157,31 @@ def get_file_size(path: Path) -> int:
 
 def md5_hex(data: bytes) -> str:
     return hashlib.md5(data).hexdigest()
+
+
+# ============================================================
+# 门控模型访问检查
+# ============================================================
+def check_gated_access(repo: str, accept_url: str) -> bool:
+    if not HAS_TOKEN:
+        return False
+    try:
+        resp = requests.get(
+            f"https://huggingface.co/api/models/{repo}",
+            headers=_auth_headers(),
+            timeout=(DEFAULT_CONNECT_TIMEOUT, 30),
+        )
+        if resp.status_code != 200:
+            logger.warning("HF API 返回 HTTP %d，无法验证访问权限", resp.status_code)
+            return False
+        data = resp.json()
+        gated = data.get("gated", False)
+        if gated and gated != "auto":
+            logger.warning("模型 %s 是门控模型", repo)
+            return False
+    except Exception as e:
+        logger.debug("检查门控访问失败: %s", e)
+    return True
 
 
 # ============================================================
@@ -389,6 +416,7 @@ def download_model(
     description = model_info["description"]
     files = model_info["files"]
     sub_dir = model_info["dir"]
+    gated_accept_url = model_info.get("gated_accept_url", "")
 
     model_dest = dest_base / sub_dir
     model_dest.mkdir(parents=True, exist_ok=True)
@@ -404,6 +432,31 @@ def download_model(
     elif gated:
         logger.info("门控: 是（已配置 HF_TOKEN）")
     logger.info("-" * 60)
+
+    if gated and HAS_TOKEN and gated_accept_url:
+        logger.info("验证门控模型访问权限...")
+        try:
+            resp = requests.head(
+                f"https://huggingface.co/{repo}/resolve/main/{files[0]}",
+                headers=_auth_headers(),
+                timeout=(DEFAULT_CONNECT_TIMEOUT, 30),
+                allow_redirects=True,
+            )
+            if resp.status_code == 401:
+                logger.error("  ✗ 无权访问！请先在浏览器中接受模型使用协议：")
+                logger.error("    1. 打开 %s", gated_accept_url)
+                logger.error("    2. 点击 'Agree and access repository'")
+                logger.error("    3. 同时接受 segmentation-3.0 的协议")
+                logger.info("  → 跳过此模型，请完成授权后重试")
+                return 0, len(files)
+            elif resp.status_code == 404:
+                logger.warning("  ⚠ 文件列表中的文件不存在（404），将尝试直接下载")
+            elif resp.status_code == 200:
+                logger.info("  ✓ 门控模型访问权限正常")
+            else:
+                logger.warning("  ⚠ HEAD 返回 HTTP %d，继续尝试下载", resp.status_code)
+        except Exception as e:
+            logger.warning("  ⚠ 权限检查失败: %s，继续尝试直接下载", e)
 
     success_count = 0
     fail_count = 0
@@ -432,6 +485,12 @@ def download_model(
     logger.info("-" * 60)
     logger.info("模型 %s 完成: 成功 %d, 失败 %d, 耗时 %s",
                  model_key, success_count, fail_count, format_duration(elapsed))
+
+    if fail_count > 0 and gated:
+        logger.warning("⚠ 门控模型下载失败的可能原因：")
+        logger.warning("  1. 未接受模型使用协议 → 打开 %s", gated_accept_url or f"https://hf-mirror.com/{repo}")
+        logger.warning("  2. HF_TOKEN 权限不足 → 检查 Token 是否勾选 'Read access to gated repos'")
+        logger.warning("  3. 镜像不支持门控模型 → 试试 python download_models.py --no-mirror")
     logger.info("")
 
     return success_count, fail_count

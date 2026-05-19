@@ -20,9 +20,13 @@ docs/
 
 # 模型缓存
 models/
+models_download/
 
 # 日志文件
 *.log
+
+# 网页存档
+web/
 
 # IDE 配置
 .vscode/

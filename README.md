@@ -52,8 +52,19 @@ DEEPSEEK_API_KEY=sk-你的DeepSeek_API密钥
 ```
 
 > **获取密钥**：
-> - HuggingFace Token：前往 [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) 创建
+> - HuggingFace Token：前往 [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) 创建，**务必勾选 "Read access to content of gated repos"**
 > - DeepSeek API Key：前往 [platform.deepseek.com](https://platform.deepseek.com/) 获取
+
+#### ⚠️ 门控模型授权（必须）
+
+`pyannote/speaker-diarization-3.1` 和 `pyannote/segmentation-3.0` 是门控模型，**即使有 HF_TOKEN 也必须先在浏览器中接受协议**：
+
+1. 登录 [hf-mirror.com](https://hf-mirror.com)（或 [huggingface.co](https://huggingface.co)）
+2. 打开 [speaker-diarization-3.1](https://hf-mirror.com/pyannote/speaker-diarization-3.1)，点击 **"Agree and access repository"**
+3. 打开 [segmentation-3.0](https://hf-mirror.com/pyannote/segmentation-3.0)，点击 **"Agree and access repository"**
+4. 填写表单（Company/university、Website）后提交，即可下载
+
+> 未完成授权的话，download_models.py 会自动检测并给出提示。
 
 ### 3. 预下载 M3 模型（推荐）
 
