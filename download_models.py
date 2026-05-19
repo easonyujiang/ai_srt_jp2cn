@@ -104,16 +104,17 @@ class TqdmProgress:
     def __init__(self):
         self._bars = {}
 
-    def __call__(self, n: int, total: int, *, current_file: str = ""):
+    def __call__(self, n: int, total: int, **kwargs):
         if total <= 0:
             return
-        if current_file not in self._bars:
-            short = current_file if len(current_file) < 36 else "…" + current_file[-35:]
-            self._bars[current_file] = tqdm(
+        fname = kwargs.get("current_file") or kwargs.get("desc") or ""
+        if fname not in self._bars:
+            short = fname if len(fname) < 36 else "…" + fname[-35:]
+            self._bars[fname] = tqdm(
                 total=total, unit="B", unit_scale=True, unit_divisor=1024,
                 desc=short, mininterval=0.3, leave=False,
             )
-        bar = self._bars[current_file]
+        bar = self._bars[fname]
         delta = n - bar.n
         if delta > 0:
             bar.update(delta)
@@ -165,8 +166,6 @@ def download_repo(repo: str, cache_dir: Path, gated: bool = False,
                 repo_id=repo,
                 token=HF_TOKEN,
                 local_dir=local_dir,
-                local_dir_use_symlinks=False,
-                resume_download=True,
                 max_workers=4,
                 tqdm_class=progress,
                 ignore_patterns=[
