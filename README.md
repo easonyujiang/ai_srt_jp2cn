@@ -55,7 +55,34 @@ DEEPSEEK_API_KEY=sk-你的DeepSeek_API密钥
 > - HuggingFace Token：前往 [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) 创建
 > - DeepSeek API Key：前往 [platform.deepseek.com](https://platform.deepseek.com/) 获取
 
-### 3. 创建 Conda 环境
+### 3. 预下载 M3 模型（推荐）
+
+M3（ASR 转写对齐）首次运行需从 HuggingFace 下载约 **10 GB** 模型文件。国内网络环境建议提前下载，避免运行时卡住。
+
+```bash
+# 安装下载依赖（仅 requests + tqdm，无需 GPU）
+pip install requests tqdm python-dotenv
+
+# 下载全部 4 个模型（需 .env 中配置 HF_TOKEN）
+python download_models.py
+
+# 网络不稳定时可调整参数
+python download_models.py --retry 10    # 最多重试 10 次
+python download_models.py --no-mirror   # 直连 huggingface.co
+python download_models.py --skip-gated  # 仅下载公开模型
+python download_models.py --model whisper-large-v2  # 只下载某个模型
+```
+
+模型将下载到 `models_download/` 目录，M3 运行时会通过 `HF_HOME` 自动从 `models/` 目录加载。
+
+| 模型 | 大小 | 说明 |
+|------|------|------|
+| `openai/whisper-large-v2` | ~6.5 GB | 语音识别 |
+| `pyannote/speaker-diarization-3.1` | ~800 MB | 说话人分离（门控）|
+| `pyannote/segmentation-3.0` | ~380 MB | 语音活动检测（门控）|
+| `wav2vec2-large-xlsr-53-japanese` | ~1.2 GB | 词级对齐 |
+
+### 4. 创建 Conda 环境
 
 每个模块有独立的 conda 环境，使用环境名分别为：`mod1_demux`、`mod2_separate`、`mod3_asr`、`mod4_normalize`、`mod5_subtitle`、`mod6_translate`。
 
@@ -69,7 +96,7 @@ cd Module5_subtitle && conda env create -f environment.yml && cd ..
 cd Module6_translate && conda env create -f environment.yml && cd ..
 ```
 
-### 4. 安装 pip 依赖
+### 5. 安装 pip 依赖
 
 ```bash
 # 流水线主环境
@@ -122,7 +149,7 @@ conda activate mod6_translate
 pip install -r Module6_translate/requirements.txt
 ```
 
-### 5. 运行（config.py 已自动适配平台，无需手动配置路径）
+### 6. 运行（config.py 已自动适配平台，无需手动配置路径）
 
 #### GUI 模式
 
@@ -153,6 +180,23 @@ python Module2_separate/separate.py input.wav vocals.wav
 ## ☁️ CloudStudio / AutoDL 云端一键部署
 
 适用于 腾讯 CloudStudio、AutoDL 等 GPU 算力平台。推荐 V100 32GB / RTX 3090 24GB / RTX 4090 24GB。
+
+### 云端拉取命令
+
+```bash
+# 从 GitHub 拉取最新代码
+git clone https://github.com/easonyujiang/ai_srt_jp2cn.git
+cd ai_srt_jp2cn
+
+# 如果已克隆，拉取更新
+git pull origin master
+
+# 复制环境变量模板并配置密钥
+cp .env.example .env
+vim .env   # 或 nano .env，填入 HF_TOKEN 和 DEEPSEEK_API_KEY
+```
+
+### 一键部署
 
 ```bash
 # 1. 终端输入以下唯一命令
@@ -194,8 +238,8 @@ sudo shutdown -h now
 ## 注意事项
 
 - **`.env` 文件包含 API 密钥，切勿提交到公开仓库**
-- 首次运行 M3 会下载 WhisperX 模型（约 3GB），请保持网络畅通
-- 腾讯云 / AutoDL 等国内算力平台通常可直接访问 HuggingFace。如果下载失败，在 `.env` 中添加 `HF_ENDPOINT=https://hf-mirror.com`
+- 首次运行 M3 会从 HuggingFace 下载约 10GB 模型文件，建议先用 [`download_models.py`](#3-预下载-m3-模型推荐) 预下载
+- 腾讯云 / AutoDL 等国内算力平台通常可直接访问 HuggingFace。如果下载失败，在 `.env` 中添加 `HF_ENDPOINT=https://hf-mirror.com` 或使用 `python download_models.py --retry 10`
 
 ## 常见问题
 
