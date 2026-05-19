@@ -157,7 +157,6 @@ def download_repo(repo: str, cache_dir: Path, allow_patterns: list = None,
             kwargs = dict(
                 repo_id=repo,
                 token=HF_TOKEN,
-                cache_dir=str(cache_dir),
                 max_workers=4,
             )
             if allow_patterns:
