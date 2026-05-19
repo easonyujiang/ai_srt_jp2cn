@@ -39,7 +39,6 @@ os.environ.pop("https_proxy", None)
 
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import HfHubHTTPError
-from tqdm import tqdm
 
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(message)s"
 LOG_DATE_FORMAT = "%H:%M:%S"
@@ -100,31 +99,6 @@ def format_duration(seconds: float) -> str:
     return f"{m}m{s:02d}s"
 
 
-class TqdmProgress:
-    def __init__(self):
-        self._bars = {}
-
-    def __call__(self, n: int, total: int, **kwargs):
-        if total <= 0:
-            return
-        fname = kwargs.get("current_file") or kwargs.get("desc") or ""
-        if fname not in self._bars:
-            short = fname if len(fname) < 36 else "…" + fname[-35:]
-            self._bars[fname] = tqdm(
-                total=total, unit="B", unit_scale=True, unit_divisor=1024,
-                desc=short, mininterval=0.3, leave=False,
-            )
-        bar = self._bars[fname]
-        delta = n - bar.n
-        if delta > 0:
-            bar.update(delta)
-
-    def close(self):
-        for bar in self._bars.values():
-            bar.close()
-        self._bars.clear()
-
-
 def _check_gated(repo: str, gated_prompt: str) -> bool:
     if not HAS_TOKEN:
         return False
@@ -158,7 +132,6 @@ def download_repo(repo: str, cache_dir: Path, gated: bool = False,
             time.sleep(wait)
 
         try:
-            progress = TqdmProgress()
             os.environ["HF_HOME"] = str(cache_dir)
             local_dir = cache_dir / "hub"
 
@@ -167,7 +140,6 @@ def download_repo(repo: str, cache_dir: Path, gated: bool = False,
                 token=HF_TOKEN,
                 local_dir=local_dir,
                 max_workers=4,
-                tqdm_class=progress,
                 ignore_patterns=[
                     "*.eval", "*.rttm",
                     ".gitattributes",
@@ -175,7 +147,6 @@ def download_repo(repo: str, cache_dir: Path, gated: bool = False,
                     "reproducible_research/**",
                 ],
             )
-            progress.close()
             logger.info("  ✓ 下载完成")
             return True
 
