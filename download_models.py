@@ -99,6 +99,15 @@ MODELS = [
                   "special_tokens_map.json", "tokenizer_config.json",
                   "generation_config.json"],
     },
+    {
+        "key": "spkrec-ecapa-voxceleb",
+        "repo": "speechbrain/spkrec-ecapa-voxceleb",
+        "gated": False,
+        "description": "SpeechBrain ECAPA-TDNN 说话人嵌入 (~34 MB)",
+        "allow": ["classifier.ckpt", "embedding_model.ckpt",
+                  "hyperparams.yaml", "config.json",
+                  "label_encoder.txt", "mean_var_norm_emb.ckpt"],
+    },
 ]
 
 

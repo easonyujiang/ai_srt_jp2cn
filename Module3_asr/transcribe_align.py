@@ -24,8 +24,102 @@ os.environ["PYANNOTE_CACHE"] = str(PROJECT_ROOT / "models" / "hub")
 import torch
 torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
 
+import lightning_fabric.utilities.cloud_io as _lc
+_lc_orig_load = _lc._load
+def _lc_patched_load(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _lc_orig_load(*args, **kwargs)
+_lc._load = _lc_patched_load
+
+_torch_load_orig = torch.load
+def _torch_load_patched(*args, **kwargs):
+    kwargs["weights_only"] = False
+    return _torch_load_orig(*args, **kwargs)
+torch.load = _torch_load_patched
+
+# Also patch torch.serialization.load (some libs import from there directly)
+import torch.serialization as _tser
+if hasattr(_tser, "load"):
+    _tser_load_orig = _tser.load
+    def _tser_load_patched(*args, **kwargs):
+        kwargs["weights_only"] = False
+        return _tser_load_orig(*args, **kwargs)
+    _tser.load = _tser_load_patched
+
+import sys as _sys
+from types import ModuleType as _ModuleType
+
+import speechbrain.utils.importutils as _sbiu
+_sbiu_ensure_meth = _sbiu.LazyModule.ensure_module
+_pending = set()
+def _patched_ensure(self, stacklevel=1):
+    target = self.__dict__.get("_target", self.__dict__.get("target", str(self)))
+    if target in _pending:
+        m = _ModuleType(target)
+        m.__file__ = "(blocked)"
+        _sys.modules[target] = m
+        return m
+    _pending.add(target)
+    try:
+        return _sbiu_ensure_meth(self, stacklevel)
+    except ImportError:
+        m = _ModuleType(target)
+        m.__file__ = "(blocked)"
+        m.__path__ = []
+        m.__package__ = target.rsplit(".", 1)[0] if "." in target else None
+        _sys.modules[target] = m
+        return m
+    finally:
+        _pending.discard(target)
+_sbiu.LazyModule.ensure_module = _patched_ensure
+
 import whisperx
 from dotenv import load_dotenv
+
+import speechbrain.utils.fetching as _sbf
+_sbf_orig_fetch = _sbf.fetch
+def _sbf_patched_fetch(filename, source, savedir=None, **kwargs):
+    if savedir:
+        sp = Path(savedir) / filename
+        if sp.is_file():
+            return str(sp)
+    from huggingface_hub import try_to_load_from_cache
+    if isinstance(source, str) and "/" in source:
+        resolved = try_to_load_from_cache(source, filename)
+        if resolved:
+            return resolved
+    return _sbf_orig_fetch(filename, source, savedir=savedir, **kwargs)
+_sbf.fetch = _sbf_patched_fetch
+
+from speechbrain.inference.speaker import EncoderClassifier as _SBEncoder
+_sb_orig_from_hparams = _SBEncoder.from_hparams.__func__
+@classmethod
+def _sb_patched_from_hparams(cls, source, **kwargs):
+    allowed = {"hparams_file", "overrides", "overrides_must_match",
+               "savedir", "download_only", "local_strategy", "fetch_config"}
+    kwargs = {k: v for k, v in kwargs.items() if k in allowed}
+    kwargs.setdefault("overrides", {})
+    kwargs.setdefault("overrides_must_match", True)
+    return _sb_orig_from_hparams(cls, source, **kwargs)
+_SBEncoder.from_hparams = _sb_patched_from_hparams
+
+import huggingface_hub.file_download as _hfdl
+_hfdl_orig = _hfdl.hf_hub_download
+def _hfdl_patched(repo_id, filename, *args, **kwargs):
+    kwargs["local_files_only"] = True
+    try:
+        return _hfdl_orig(repo_id, filename, *args, **kwargs)
+    except Exception:
+        hub = Path(os.environ.get("HUGGINGFACE_HUB_CACHE", ""))
+        for sd in hub.glob("models--*/snapshots/*/"):
+            candidate = sd / filename
+            if candidate.is_file() and candidate.stat().st_size > 100:
+                return str(candidate)
+        raise
+_hfdl.hf_hub_download = _hfdl_patched
+
+import huggingface_hub as _hfh
+_hfh.hf_hub_download = _hfdl_patched
 
 import whisperx.vad as _wvad
 
@@ -376,40 +470,31 @@ def transcribe_and_align(
 
     # ======== 阶段 3: 说话人分离 ========
     report_progress(60.0, "加载说话人分离模型...")
-    diarize_model = None
-    try:
-        if verbose:
-            print("[Module 3] 加载说话人分离模型 (pyannote) ...")
-        if low_vram:
-            torch.cuda.empty_cache()
-        diarize_model = whisperx.DiarizationPipeline(
-            use_auth_token=token, device=device
-        )
+    if verbose:
+        print("[Module 3] 加载说话人分离模型 (pyannote) ...")
+    if low_vram:
+        torch.cuda.empty_cache()
+    diarize_model = whisperx.DiarizationPipeline(
+        use_auth_token=token, device=device
+    )
 
-        diarize_kwargs = {}
-        if min_speakers is not None:
-            diarize_kwargs["min_speakers"] = min_speakers
-        if max_speakers is not None:
-            diarize_kwargs["max_speakers"] = max_speakers
+    diarize_kwargs = {}
+    if min_speakers is not None:
+        diarize_kwargs["min_speakers"] = min_speakers
+    if max_speakers is not None:
+        diarize_kwargs["max_speakers"] = max_speakers
 
-        report_progress(70.0, "说话人分离中...")
-        if verbose:
-            print("[Module 3] 运行说话人分离...")
-        diarize_segments = diarize_model(audio, **diarize_kwargs)
+    report_progress(70.0, "说话人分离中...")
+    if verbose:
+        print("[Module 3] 运行说话人分离...")
+    diarize_segments = diarize_model(audio, **diarize_kwargs)
 
-        result_final = whisperx.assign_word_speakers(diarize_segments, result_aligned)
-        report_progress(85.0, "说话人分离完成")
-        if low_vram:
-            del diarize_model
-            torch.cuda.empty_cache()
-    except Exception as e:
-        if verbose:
-            print(f"[Module 3] 说话人分离跳过 ({type(e).__name__}): 将使用默认说话人标签")
-        result_final = result_aligned
-        for seg in result_final.get("segments", []):
-            seg["speaker"] = "SPEAKER_00"
-            for w in seg.get("words", []):
-                w["speaker"] = "SPEAKER_00"
+    result_final = whisperx.assign_word_speakers(diarize_segments, result_aligned)
+
+    report_progress(85.0, "说话人分离完成")
+    if low_vram:
+        del diarize_model
+        torch.cuda.empty_cache()
 
     # ======== 阶段 4: 保存 JSON ========
     report_progress(90.0, "保存结果...")

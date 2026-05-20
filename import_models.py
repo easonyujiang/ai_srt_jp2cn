@@ -59,6 +59,18 @@ REPOS = {
             "config.yaml",
         ],
     },
+    "speechbrain/spkrec-ecapa-voxceleb": {
+        "dir": "models--speechbrain--spkrec-ecapa-voxceleb",
+        "desc": "SpeechBrain ECAPA-TDNN 说话人嵌入",
+        "files": [
+            "classifier.ckpt",
+            "embedding_model.ckpt",
+            "hyperparams.yaml",
+            "config.json",
+            "label_encoder.txt",
+            "mean_var_norm_emb.ckpt",
+        ],
+    },
 }
 
 RED = "\033[91m"
