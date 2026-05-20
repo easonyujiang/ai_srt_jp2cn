@@ -27,6 +27,21 @@
 - **GPU**：推荐 NVIDIA GPU（≥8GB 显存，RTX 3060/4060 即可），使用 CUDA int8 推理
 - **ffmpeg**：需可通过命令行调用
 
+### 0. Windows 用户：下载 cuDNN DLL（约 900MB）
+
+`ctranslate2` 的 PyPI wheel 自带 cuDNN 8 DLL 不完整，GPU 推理需要完整的 cuDNN 8.9.x。
+
+```bash
+# 一键下载（从 HuggingFace 镜像拉取）
+python scripts/download_cudnn.py
+
+# 或手动从 NVIDIA 下载 cuDNN 8.9.x for CUDA 12.x
+# https://developer.nvidia.com/cudnn
+# 解压后将 bin/ 下所有 .dll 放入 libs/
+```
+
+> **Linux 云端用户**：`conda install -c conda-forge cudnn=8.9.*` 即可，不需要 DLL。`deploy_cloud.sh` 已自动处理。
+
 ## 快速开始
 
 ### 1. 克隆仓库

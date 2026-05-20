@@ -127,6 +127,16 @@ conda run -n mod3_asr pip install -q \
     torch==2.1.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
 conda run -n mod3_asr pip install -q whisperx==3.1.1 python-dotenv matplotlib huggingface_hub
 conda run -n mod3_asr pip install -q "numpy<2" "transformers>=4.36.0,<4.46.0" "faster-whisper==0.10.0" "ctranslate2>=3.20,<4.0"
+
+# M3: cuDNN（Linux 通过 conda 安装，Windows 走 libs/）
+if [[ "$(uname -s)" == "Linux" ]]; then
+    echo "  >>> M3 安装 cuDNN 8.9 (Linux)..."
+    conda run -n mod3_asr conda install -y -q -c conda-forge cudnn=8.9.* 2>/dev/null || \
+        warn "cuDNN 安装失败，可稍后手动: conda install -c conda-forge cudnn"
+    check_ok "mod3_asr     (cuDNN)"
+else
+    check_ok "mod3_asr     (Windows: 请运行 python scripts/download_cudnn.py)"
+fi
 check_ok "mod3_asr     (WhisperX ASR)"
 
 # M4: 文本规范化 (OpenAI SDK)
