@@ -22,6 +22,8 @@ os.environ["TRANSFORMERS_OFFLINE"] = "1"
 os.environ["PYANNOTE_CACHE"] = str(PROJECT_ROOT / "models" / "hub")
 
 import torch
+torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
+
 import whisperx
 from dotenv import load_dotenv
 
@@ -69,7 +71,10 @@ def get_gpu_vram_gb():
     if not torch.cuda.is_available():
         return 0
     try:
-        total_bytes = torch.cuda.get_device_properties(0).total_mem
+        props = torch.cuda.get_device_properties(0)
+        total_bytes = getattr(props, "total_memory", None)
+        if total_bytes is None:
+            total_bytes = getattr(props, "total_mem", 0)
         vram = total_bytes / (1024 ** 3)
         if vram < 1.0:
             try:
@@ -371,31 +376,40 @@ def transcribe_and_align(
 
     # ======== 阶段 3: 说话人分离 ========
     report_progress(60.0, "加载说话人分离模型...")
-    if verbose:
-        print("[Module 3] 加载说话人分离模型 (pyannote) ...")
-    if low_vram:
-        torch.cuda.empty_cache()
-    diarize_model = whisperx.DiarizationPipeline(
-        use_auth_token=token, device=device
-    )
+    diarize_model = None
+    try:
+        if verbose:
+            print("[Module 3] 加载说话人分离模型 (pyannote) ...")
+        if low_vram:
+            torch.cuda.empty_cache()
+        diarize_model = whisperx.DiarizationPipeline(
+            use_auth_token=token, device=device
+        )
 
-    diarize_kwargs = {}
-    if min_speakers is not None:
-        diarize_kwargs["min_speakers"] = min_speakers
-    if max_speakers is not None:
-        diarize_kwargs["max_speakers"] = max_speakers
+        diarize_kwargs = {}
+        if min_speakers is not None:
+            diarize_kwargs["min_speakers"] = min_speakers
+        if max_speakers is not None:
+            diarize_kwargs["max_speakers"] = max_speakers
 
-    report_progress(70.0, "说话人分离中...")
-    if verbose:
-        print("[Module 3] 运行说话人分离...")
-    diarize_segments = diarize_model(audio, **diarize_kwargs)
+        report_progress(70.0, "说话人分离中...")
+        if verbose:
+            print("[Module 3] 运行说话人分离...")
+        diarize_segments = diarize_model(audio, **diarize_kwargs)
 
-    result_final = whisperx.assign_word_speakers(diarize_segments, result_aligned)
-
-    report_progress(85.0, "说话人分离完成")
-    if low_vram:
-        del diarize_model
-        torch.cuda.empty_cache()
+        result_final = whisperx.assign_word_speakers(diarize_segments, result_aligned)
+        report_progress(85.0, "说话人分离完成")
+        if low_vram:
+            del diarize_model
+            torch.cuda.empty_cache()
+    except Exception as e:
+        if verbose:
+            print(f"[Module 3] 说话人分离跳过 ({type(e).__name__}): 将使用默认说话人标签")
+        result_final = result_aligned
+        for seg in result_final.get("segments", []):
+            seg["speaker"] = "SPEAKER_00"
+            for w in seg.get("words", []):
+                w["speaker"] = "SPEAKER_00"
 
     # ======== 阶段 4: 保存 JSON ========
     report_progress(90.0, "保存结果...")

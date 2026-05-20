@@ -67,6 +67,38 @@ YELLOW = "\033[93m"
 CYAN = "\033[96m"
 RESET = "\033[0m"
 
+def _fix_diarization_config(snapshot_dir):
+    import yaml
+    config_path = snapshot_dir / "config.yaml"
+    if not config_path.is_file():
+        return
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    except Exception:
+        return
+    if "pipeline" in config:
+        return
+    new_config = {
+        "pipeline": {
+            "name": "pyannote.audio.pipelines.SpeakerDiarization",
+            "params": {
+                "clustering": "AgglomerativeClustering",
+                "segmentation_batch_size": 32,
+                "embedding": "speechbrain/spkrec-ecapa-voxceleb",
+                "embedding_batch_size": 32,
+                "embedding_exclude_overlap": True,
+                "segmentation": "pyannote/segmentation-3.0",
+            }
+        },
+        "version": "3.1.1"
+    }
+    with open(config_path, "w", encoding="utf-8") as f:
+        yaml.dump(new_config, f)
+    yml_path = snapshot_dir / "config.yml"
+    if not yml_path.is_file():
+        shutil.copy2(config_path, yml_path)
+
 def _color(code, text):
     if sys.stdout.isatty():
         return f"{code}{text}{RESET}"
@@ -206,6 +238,9 @@ def import_models(results, target_dir):
             yml_dst = snapshot_dir / "config.yml"
             if not yml_dst.exists():
                 shutil.copy2(snapshot_dir / "config.yaml", yml_dst)
+
+        if repo_id == "pyannote/speaker-diarization-3.1":
+            _fix_diarization_config(snapshot_dir)
 
         ref_file = refs_dir / "main"
         ref_file.write_text(snapshot_hash, encoding="utf-8")
