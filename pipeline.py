@@ -144,6 +144,8 @@ class PipelineRunner:
                 "--temp-dir", str(TEMP_DIR),
                 "--min-speakers", str(self.args.get("min_speakers", 1)),
                 "--max-speakers", str(self.args.get("max_speakers", DEFAULT_MAX_SPEAKERS)),
+                "--device", self.args.get("device", "cuda"),
+                "--compute-type", self.args.get("compute_type", "int8"),
                 *(["--quiet"] if self.args.get("quiet") else [])
             ], line_handler=m3_line_handler)
             report(3, 1.0)
@@ -434,7 +436,9 @@ class PipelineGUI:
             "subtitle_format": self.format_var.get(),
             "translation_style": DEFAULT_TRANSLATION_STYLE,
             "output_dir": str(TRANSLATED_SUBTITLE_DIR),
-            "quiet": False
+            "quiet": False,
+            "device": "cuda",
+            "compute_type": "int8"
         }
 
         self.start_btn.configure(state=tk.DISABLED)
@@ -503,7 +507,9 @@ def run_cli(args):
         subtitle_format=args.subtitle_format,
         translation_style=args.translation_style,
         output_dir=args.output_dir,
-        quiet=args.quiet
+        quiet=args.quiet,
+        device=args.device,
+        compute_type=args.compute_type
     )
 
     def progress_cb(current, total, step_progress=0.0):
@@ -530,6 +536,8 @@ if __name__ == "__main__":
         parser.add_argument("--norm-style", default=DEFAULT_NORM_STYLE, choices=["retain", "clean"])
         parser.add_argument("--subtitle-format", default=DEFAULT_SUBTITLE_FORMAT, choices=["ass", "srt"])
         parser.add_argument("--translation-style", default=DEFAULT_TRANSLATION_STYLE, choices=["creative", "literal"])
+        parser.add_argument("--device", default="cuda", choices=["cpu", "cuda"], help="设备 (默认: cuda)")
+        parser.add_argument("--compute-type", default="int8", choices=["int8", "float16", "int8_float16"], help="精度 (默认: int8)")
         parser.add_argument("--quiet", action="store_true", help="减少输出")
         parser.add_argument("--output-dir", default=None, help="最终输出目录")
         cli_args = parser.parse_args()

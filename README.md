@@ -24,7 +24,7 @@
 - **操作系统**：Windows / Linux（config.py 自动适配）
 - **Python**：3.10
 - **包管理**：Anaconda / Miniconda
-- **GPU**：推荐 NVIDIA GPU（≥16GB 显存），低显存自动分片处理
+- **GPU**：推荐 NVIDIA GPU（≥8GB 显存，RTX 3060/4060 即可），使用 CUDA int8 推理
 - **ffmpeg**：需可通过命令行调用
 
 ## 快速开始
@@ -270,6 +270,17 @@ sudo shutdown -h now
 | `DEFAULT_SUBTITLE_FORMAT` | `"ass"` | 字幕格式 (ass/srt) |
 | `DEFAULT_TRANSLATION_STYLE` | `"creative"` | 翻译风格 |
 
+### 命令行参数
+
+```bash
+python pipeline.py video.mp4 \
+  --device cuda \           # cuda / cpu（默认 cuda）
+  --compute-type int8 \     # int8 / float16（默认 int8，8GB 显存推荐）
+  --max-speakers 5 \        # 最大说话人数
+  --subtitle-format ass \    # ass / srt
+  --quiet                    # 减少输出
+```
+
 ## 输出
 
 - **源语言字幕**：`subtitles/` 目录
@@ -299,6 +310,26 @@ Windows 缺少 Visual C++ 运行库或 PyTorch 安装不完整。
 ### 人声分离效果不理想
 
 模型默认使用 `htdemucs`，可在 `separate.py` 中将 `pretrained.get_model('htdemucs')` 改为 `htdemucs_ft` 或 `mdx_extra`（需先 `pip install demucs[all]`）。调整 `shifts` 参数（如 `shifts=3`）可提高质量，但更慢。
+
+### CUDA 崩溃：cudnn_ops_infer64_8.dll 缺失（0xC0000409）
+
+`ctranslate2` 的 PyPI wheel 自带 cuDNN 8 DLL 不完整，在 CUDA + float16 模式下会崩溃。
+
+**症状**：M3 阶段立即退出，返回码 `0xC0000409` 或 `-1073740791`，stderr 显示 `Could not locate cudnn_ops_infer64_8.dll`。
+
+**解决**（已内置）：项目 `libs/` 目录已包含完整的 cuDNN 8 DLL 文件，脚本运行时自动通过 `os.add_dll_directory()` 加载。默认使用 **CUDA int8** 模式，GPU 推理同时节省显存。
+
+如需手动安装 cuDNN 8：
+```bash
+conda activate mod3_asr
+conda install -c conda-forge cudnn=8.9.*
+```
+
+### M3 对齐阶段卡住 / HuggingFace 连接超时
+
+国内网络环境访问 huggingface.co 可能超时。
+
+**解决**（已内置）：在 `.env` 中添加 `HF_ENDPOINT=https://hf-mirror.com`，脚本已自动设置离线模式（`HF_HUB_OFFLINE=1`）和镜像端点回退。确保模型已完整导入到 `models/hub/` 目录。
 
 ### 无 GPU 时速度慢
 
