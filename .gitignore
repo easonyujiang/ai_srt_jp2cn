@@ -31,3 +31,6 @@ web/
 # IDE 配置
 .vscode/
 .idea/
+
+# cuDNN DLL（~900MB，通过脚本下载）
+libs/

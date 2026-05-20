@@ -117,6 +117,57 @@ def format_duration(seconds: float) -> str:
     return f"{h}h{m:02d}m{s:02d}s" if h else f"{m}m{s:02d}s"
 
 
+def _fix_diarization_config(cache_dir: Path):
+    import yaml
+    import shutil
+    hub = cache_dir / "hub"
+    repo_dir = hub / "models--pyannote--speaker-diarization-3.1"
+    if not repo_dir.is_dir():
+        return
+    for snap in sorted(repo_dir.glob("snapshots/*/"), reverse=True):
+        config_yaml = snap / "config.yaml"
+        if not config_yaml.is_file():
+            continue
+        try:
+            with open(config_yaml, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f)
+        except Exception:
+            continue
+        if cfg and isinstance(cfg, dict) and "pipeline" in cfg and "params" in cfg:
+            return
+        new_cfg = {
+            "pipeline": {
+                "name": "pyannote.audio.pipelines.SpeakerDiarization",
+                "params": {
+                    "clustering": "AgglomerativeClustering",
+                    "segmentation_batch_size": 32,
+                    "embedding": "speechbrain/spkrec-ecapa-voxceleb",
+                    "embedding_batch_size": 32,
+                    "embedding_exclude_overlap": True,
+                    "segmentation": "pyannote/segmentation-3.0",
+                }
+            },
+            "params": {
+                "clustering": {
+                    "method": "centroid",
+                    "min_cluster_size": 12,
+                    "threshold": 0.7045654963945799,
+                },
+                "segmentation": {
+                    "min_duration_off": 0.0,
+                },
+            },
+            "version": "3.1.1"
+        }
+        with open(config_yaml, "w", encoding="utf-8") as f:
+            yaml.dump(new_cfg, f)
+        yml_path = snap / "config.yml"
+        if not yml_path.is_file():
+            shutil.copy2(config_yaml, yml_path)
+        logger.info("  ✓ 已修复 diarization config.yaml (添加 pipeline + params)")
+        break
+
+
 def _check_gated(repo: str, gated_prompt: str) -> bool:
     if not HAS_TOKEN:
         return False
@@ -284,6 +335,9 @@ def main():
     logger.info("=" * 60)
     logger.info("全部完成: 成功 %d, 失败 %d, 耗时 %s",
                  total_ok, total_fail, format_duration(total_elapsed))
+
+    _fix_diarization_config(cache_dir)
+
     logger.info("缓存目录: %s", cache_dir)
     logger.info("下一步: 运行 pipeline.py 时 M3 会自动命中缓存")
     logger.info("=" * 60)

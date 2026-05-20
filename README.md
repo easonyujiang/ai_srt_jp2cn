@@ -14,7 +14,7 @@
 |------|------|---------|---------|
 | **M1** 解复用 | 视频提取为 16kHz 单声道 WAV | ffmpeg | - |
 | **M2** 人声分离 | 分离背景音/人声 | Demucs (htdemucs) | - |
-| **M3** ASR 转写 | 语音识别 + 词级对齐 + 说话人分离 | WhisperX (large-v2) | HuggingFace |
+| **M3** ASR 转写 | 语音识别 + 词级时间戳 + 多说话人分离 | WhisperX (large-v2) + pyannote + ECAPA-TDNN | HuggingFace |
 | **M4** 规范化 | 修正 ASR 错误、口语整理 | DeepSeek | DeepSeek API |
 | **M5** 字幕生成 | 轴文重构，输出 SRT/ASS | Python 标准库 | - |
 | **M6** 翻译 | 日译中，保留口语化表达 | DeepSeek | DeepSeek API |
@@ -68,7 +68,7 @@ DEEPSEEK_API_KEY=sk-你的DeepSeek_API密钥
 
 ### 3. 预下载 M3 模型（推荐）
 
-M3（ASR 转写对齐）首次运行需从 HuggingFace 下载约 **13 GB** 模型文件（5 个仓库）。国内网络环境建议提前下载。
+M3（ASR 转写对齐）首次运行需从 HuggingFace 下载约 **13 GB** 模型文件（6 个仓库）。国内网络环境建议提前下载。
 
 ```bash
 # 使用 M3 环境运行（已有 huggingface_hub）
@@ -90,7 +90,7 @@ python download_models.py --cache-dir ./models      # 指定缓存目录
 
 模型下载到 `models/` 目录（HF 标准缓存格式），M3 运行时 WhisperX 会**自动识别**，无需额外配置。
 
-> **原理**：`download_models.py` 使用 `huggingface_hub.snapshot_download()` —— HuggingFace 官方下载接口，自动拉取仓库中所有模型文件并写入标准缓存结构。WhisperX 在运行时通过 `HF_HOME` 读取同一目录，直接命中缓存。
+> **原理**：`download_models.py` 使用 `huggingface_hub.snapshot_download()` —— HuggingFace 官方下载接口，自动拉取仓库中所有模型文件并写入标准缓存结构。WhisperX 在运行时通过 `HF_HOME` 读取同一目录，直接命中缓存。下载完成后还会自动修复 `speaker-diarization-3.1` 的 config.yaml 格式（添加 `pipeline` 和 `params` 键，兼容 pyannote 3.x）。
 
 | 模型 | 大小 | 说明 |
 |------|------|------|
@@ -99,6 +99,7 @@ python download_models.py --cache-dir ./models      # 指定缓存目录
 | `wav2vec2-large-xlsr-53-japanese` | ~1.2 GB | 词级对齐 |
 | `pyannote/segmentation-3.0` | ~380 MB | 语音活动检测（门控）|
 | `pyannote/speaker-diarization-3.1` | 数 MB | 说话人分割 Pipeline（门控）|
+| `speechbrain/spkrec-ecapa-voxceleb` | ~34 MB | ECAPA-TDNN 说话人嵌入（diarization 必需）|
 
 > **注意**：如果之前用旧版下载过模型（扁平结构 `hub/pytorch_model.bin`），需清理后重下：
 > ```bash
@@ -317,13 +318,15 @@ Windows 缺少 Visual C++ 运行库或 PyTorch 安装不完整。
 
 **症状**：M3 阶段立即退出，返回码 `0xC0000409` 或 `-1073740791`，stderr 显示 `Could not locate cudnn_ops_infer64_8.dll`。
 
-**解决**（已内置）：项目 `libs/` 目录已包含完整的 cuDNN 8 DLL 文件，脚本运行时自动通过 `os.add_dll_directory()` 加载。默认使用 **CUDA int8** 模式，GPU 推理同时节省显存。
+**解决**（已内置）：项目 `transcribe_align.py` 启动时自动检查 `libs/` 目录（通过 `os.add_dll_directory()` 加载 cuDNN DLL）。`libs/` 目录**不随仓库分发**（约 900MB），首次使用前运行：
 
-如需手动安装 cuDNN 8：
 ```bash
-conda activate mod3_asr
-conda install -c conda-forge cudnn=8.9.*
+python scripts/download_cudnn.py
 ```
+
+或手动从 [NVIDIA cuDNN Archive](https://developer.nvidia.com/cudnn) 下载 cuDNN 8.9.x for CUDA 12.x，将 `bin/` 下的 DLL 放入 `libs/`。
+
+> 注意：默认使用 CUDA int8 模式，可缓解 cuDNN 缺失问题。如果你是云端 Linux 环境，可通过 `conda install -c conda-forge cudnn` 安装，不需要 `libs/`。
 
 ### M3 对齐阶段卡住 / HuggingFace 连接超时
 

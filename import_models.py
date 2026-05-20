@@ -103,6 +103,16 @@ def _fix_diarization_config(snapshot_dir):
                 "segmentation": "pyannote/segmentation-3.0",
             }
         },
+        "params": {
+            "clustering": {
+                "method": "centroid",
+                "min_cluster_size": 12,
+                "threshold": 0.7045654963945799,
+            },
+            "segmentation": {
+                "min_duration_off": 0.0,
+            },
+        },
         "version": "3.1.1"
     }
     with open(config_path, "w", encoding="utf-8") as f:
