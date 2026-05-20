@@ -17,6 +17,10 @@ _LIBS_DIR = PROJECT_ROOT / "libs"
 if _LIBS_DIR.is_dir():
     os.add_dll_directory(str(_LIBS_DIR))
 
+os.environ["HF_HUB_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
+os.environ["PYANNOTE_CACHE"] = str(PROJECT_ROOT / "models" / "hub")
+
 import torch
 import whisperx
 from dotenv import load_dotenv
@@ -50,28 +54,15 @@ DEFAULT_HF_MIRROR = "https://hf-mirror.com"
 VRAM_LOW_THRESHOLD_GB = 12
 
 
-def _patch_align_model_offline():
-    from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC
-    _orig_proc = Wav2Vec2Processor.from_pretrained.__func__
-    _orig_model = Wav2Vec2ForCTC.from_pretrained.__func__
-
-    def _patched_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs):
-        kwargs.setdefault("local_files_only", True)
-        return _orig_proc(cls, pretrained_model_name_or_path, *args, **kwargs)
-
-    def _patched_model_from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs):
-        kwargs.setdefault("local_files_only", True)
-        return _orig_model(cls, pretrained_model_name_or_path, *args, **kwargs)
-
-    Wav2Vec2Processor.from_pretrained = classmethod(_patched_from_pretrained)
-    Wav2Vec2ForCTC.from_pretrained = classmethod(_patched_model_from_pretrained)
-    return _orig_proc, _orig_model
-
-
-def _unpatch_align_model(orig_proc, orig_model):
-    from transformers import Wav2Vec2Processor, Wav2Vec2ForCTC
-    Wav2Vec2Processor.from_pretrained = classmethod(orig_proc)
-    Wav2Vec2ForCTC.from_pretrained = classmethod(orig_model)
+def _resolve_align_model_local(cache):
+    model_id = "jonatasgrosman/wav2vec2-large-xlsr-53-japanese"
+    hub_cache = cache / "hub"
+    repo_dir = hub_cache / ("models--" + model_id.replace("/", "--"))
+    if repo_dir.is_dir():
+        for snap_dir in sorted(repo_dir.glob("snapshots/*/"), reverse=True):
+            if (snap_dir / "config.json").is_file() and (snap_dir / "pytorch_model.bin").is_file():
+                return str(snap_dir)
+    return None
 
 
 def get_gpu_vram_gb():
@@ -281,6 +272,8 @@ def transcribe_and_align(
         cache = DEFAULT_MODEL_CACHE.resolve()
     cache.mkdir(parents=True, exist_ok=True)
     os.environ["HF_HOME"] = str(cache)
+    os.environ["HUGGINGFACE_HUB_CACHE"] = str(cache / "hub")
+    os.environ["PYANNOTE_CACHE"] = str(cache / "hub")
     if verbose:
         print(f"[缓存] 模型目录: {cache}")
         hub = cache / "hub"
@@ -318,8 +311,6 @@ def transcribe_and_align(
 
     report_progress(0.0, "加载 ASR 模型...")
 
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
     _fw_orig = _patch_faster_whisper_local()
     try:
         # ======== 阶段 1: ASR 转写 ========
@@ -347,18 +338,29 @@ def transcribe_and_align(
         report_progress(35.0, "加载对齐模型...")
         if verbose:
             print("[Module 3] 加载对齐模型 (wav2vec2) ...")
+
+        align_local_path = _resolve_align_model_local(cache)
+        if not align_local_path:
+            raise RuntimeError("对齐模型未在缓存中找到")
+
         os.environ.setdefault("HF_ENDPOINT", DEFAULT_HF_MIRROR)
-        _align_patch = _patch_align_model_offline()
+
+        import whisperx.alignment as _walign
+        _orig_default_model = _walign.DEFAULT_ALIGN_MODELS_HF.get(language)
+        _walign.DEFAULT_ALIGN_MODELS_HF[language] = align_local_path
+
         try:
             model_a, metadata = whisperx.load_align_model(
-                language_code=language, device=device
+                language_code=language, device=device,
+                model_name=align_local_path, model_dir=None
+            )
+            result_aligned = whisperx.align(
+                result["segments"], model_a, metadata, audio, device,
+                return_char_alignments=False, preprocess=False
             )
         finally:
-            _unpatch_align_model(*_align_patch)
-        result_aligned = whisperx.align(
-            result["segments"], model_a, metadata, audio, device,
-            return_char_alignments=False
-        )
+            if _orig_default_model is not None:
+                _walign.DEFAULT_ALIGN_MODELS_HF[language] = _orig_default_model
 
         report_progress(55.0, "对齐完成")
         if low_vram:
@@ -366,8 +368,6 @@ def transcribe_and_align(
             torch.cuda.empty_cache()
     finally:
         _unpatch_faster_whisper(_fw_orig)
-        os.environ.pop("TRANSFORMERS_OFFLINE", None)
-        os.environ.pop("HF_HUB_OFFLINE", None)
 
     # ======== 阶段 3: 说话人分离 ========
     report_progress(60.0, "加载说话人分离模型...")

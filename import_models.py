@@ -83,10 +83,12 @@ def _size_str(path):
     return f"{size} B"
 
 
-def _find_file(source_dir, repo_files):
+def _find_file(source_dir, repo_files, min_sizes=None):
     found = {}
     for fname in repo_files:
         candidates = list(source_dir.rglob(fname))
+        if min_sizes and fname in min_sizes:
+            candidates = [c for c in candidates if os.path.getsize(c) >= min_sizes[fname]]
         if len(candidates) == 1:
             found[fname] = candidates[0]
         elif len(candidates) > 1:
@@ -135,7 +137,7 @@ def scan_source(source_dir):
         results[repo_id] = found
 
     subdir_results = {}
-    for sub_name, sub_found in _find_files_by_subdir(source_dir, REPOS[next(iter(REPOS))]["files"]):
+    for sub_name, _ in _find_files_by_subdir(source_dir, REPOS[next(iter(REPOS))]["files"]):
         for rid, info in REPOS.items():
             s = _find_file(Path(source_dir) / sub_name, info["files"])
             if len(s) >= len(info["files"]) - 1:
@@ -199,6 +201,11 @@ def import_models(results, target_dir):
             src = found[fname]
             dst = snapshot_dir / fname
             shutil.copy2(src, dst)
+
+        if "config.yaml" in info["files"]:
+            yml_dst = snapshot_dir / "config.yml"
+            if not yml_dst.exists():
+                shutil.copy2(snapshot_dir / "config.yaml", yml_dst)
 
         ref_file = refs_dir / "main"
         ref_file.write_text(snapshot_hash, encoding="utf-8")
