@@ -64,7 +64,7 @@ def _ensure_models_cached(verbose=True):
             "repo": "Systran/faster-whisper-large-v2",
             "desc": "Faster-Whisper CT2 模型",
             "allow": ["model.bin", "config.json", "tokenizer.json",
-                      "preprocessor_config.json", "vocabulary.json"],
+                      "preprocessor_config.json", "vocabulary.txt"],
             "is_asr": True,
         },
         {

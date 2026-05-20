@@ -61,7 +61,7 @@ MODELS = [
         "gated": False,
         "description": "Faster-Whisper CT2 模型 (WhisperX 核心, ~3 GB)",
         "allow": ["model.bin", "config.json", "tokenizer.json",
-                  "preprocessor_config.json", "vocabulary.json"],
+                  "preprocessor_config.json", "vocabulary.txt"],
     },
     {
         "key": "wav2vec2-xlsr-53-japanese",
