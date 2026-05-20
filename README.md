@@ -95,7 +95,7 @@ python download_models.py --cache-dir ./models      # 指定缓存目录
 | 模型 | 大小 | 说明 |
 |------|------|------|
 | `Systran/faster-whisper-large-v2` | ~3 GB | Faster-Whisper CT2 (WhisperX 实际调用) |
-| `openai/whisper-large-v2` | ~6.5 GB | Whisper 原始模型 (tokenizer 等) |
+| `openai/whisper-large-v2` | ~6.5 GB | Whisper 原始模型 (tokenizer 等，备用参考) |
 | `wav2vec2-large-xlsr-53-japanese` | ~1.2 GB | 词级对齐 |
 | `pyannote/segmentation-3.0` | ~380 MB | 语音活动检测（门控）|
 | `pyannote/speaker-diarization-3.1` | 数 MB | 说话人分割 Pipeline（门控）|
@@ -105,6 +105,23 @@ python download_models.py --cache-dir ./models      # 指定缓存目录
 > rm -rf models/hub
 > python download_models.py
 > ```
+
+#### 备用方案：手动浏览器下载 + 导入
+
+如果网络环境导致 `download_models.py` 下载失败，可以使用浏览器手动下载模型文件，再用 `import_models.py` 导入到标准缓存：
+
+```bash
+# 1. 查看需要下载的文件清单和下载地址
+python import_models.py --list-missing
+
+# 2. 用浏览器逐个下载文件，放入 models_download/ 目录
+
+# 3. 检查文件完整性
+python import_models.py --check-only
+
+# 4. 导入到 models/ 标准缓存
+python import_models.py
+```
 
 ### 4. 创建 Conda 环境
 
@@ -262,7 +279,7 @@ sudo shutdown -h now
 ## 注意事项
 
 - **`.env` 文件包含 API 密钥，切勿提交到公开仓库**
-- 首次运行 M3 会从 HuggingFace 下载约 10GB 模型文件，建议先用 [`download_models.py`](#3-预下载-m3-模型推荐) 预下载
+- 首次运行 M3 会从 HuggingFace 下载约 10GB 模型文件，建议先用 [`download_models.py`](#3-预下载-m3-模型推荐) 预下载；如网络受限，可用 [`import_models.py`](#备用方案手动浏览器下载--导入) 手动导入
 - 腾讯云 / AutoDL 等国内算力平台通常可直接访问 HuggingFace。如果下载失败，在 `.env` 中添加 `HF_ENDPOINT=https://hf-mirror.com` 或使用 `python download_models.py --retry 10`
 
 ## 常见问题
