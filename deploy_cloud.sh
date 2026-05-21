@@ -17,7 +17,7 @@ section "ai_srt_jp2cn 云端部署 (Linux V100 + 6独立环境)"
 # ============================================================
 
 # ----- 0. GPU -----
-section "[0/8] GPU 检测"
+section "[0/9] GPU 检测"
 if nvidia-smi &>/dev/null; then
     nvidia-smi --query-gpu=gpu_name,memory.total --format=csv,noheader
     check_ok "GPU 可用"
@@ -26,7 +26,7 @@ else
 fi
 
 # ----- 1. 系统依赖 -----
-section "[1/8] 系统依赖"
+section "[1/9] 系统依赖"
 if command -v apt-get &>/dev/null; then
     sudo apt-get update -qq
     sudo apt-get install -y -qq ffmpeg git wget bzip2
@@ -36,7 +36,7 @@ fi
 check_ok "ffmpeg / git / wget / bzip2"
 
 # ----- 2. Miniconda -----
-section "[2/8] Miniconda"
+section "[2/9] Miniconda"
 if command -v conda &>/dev/null; then
     check_ok "conda 已安装 ($(conda --version 2>&1))"
 else
@@ -52,7 +52,7 @@ fi
 eval "$("$HOME/miniconda3/bin/conda" shell.bash hook 2>/dev/null || conda shell.bash hook)"
 
 # ----- 3. 克隆项目 -----
-section "[3/8] 项目仓库"
+section "[3/9] 项目仓库"
 # CloudStudio 默认工作目录为 /workspace，其他平台用 $HOME/ai_srt_jp2cn
 if [ -d "/workspace" ] && [ -w "/workspace" ]; then
     PROJECT_DIR="/workspace"
@@ -71,7 +71,7 @@ fi
 mkdir -p videos subtitles subtitles_translated temp models
 
 # ----- 4. 配置 .env -----
-section "[4/8] API 密钥"
+section "[4/9] API 密钥"
 if [ -f ".env" ] && grep -q "sk-" .env 2>/dev/null; then
     check_ok ".env 已配置"
 else
@@ -90,7 +90,7 @@ EOF
 fi
 
 # ----- 5. 创建环境 -----
-section "[5/8] 创建 6 个独立 conda 环境"
+section "[5/9] 创建 6 个独立 conda 环境"
 
 create_env() {
     local name=$1; local module_dir=$2; local req_file=$3; local extra_pip=$4
@@ -126,7 +126,7 @@ conda create -n mod3_asr python=3.10 -y -q -c conda-forge
 conda run -n mod3_asr pip install -q \
     torch==2.1.0 torchaudio==2.1.0 --index-url https://download.pytorch.org/whl/cu121
 conda run -n mod3_asr pip install -q whisperx==3.1.1 python-dotenv matplotlib huggingface_hub
-conda run -n mod3_asr pip install -q "numpy<2" "transformers>=4.36.0,<4.46.0" "faster-whisper==0.10.0" "ctranslate2>=3.20,<4.0"
+conda run -n mod3_asr pip install -q "numpy<2" "transformers>=4.36.0,<4.46.0" "faster-whisper==0.10.0" "ctranslate2>=4.0,<5"
 
 # M3: cuDNN（Linux 通过 conda 安装，Windows 走 libs/）
 if [[ "$(uname -s)" == "Linux" ]]; then
@@ -156,7 +156,7 @@ pip install -q -r requirements_pipeline.txt 2>/dev/null || true
 check_ok "pipeline 主环境"
 
 # ----- 6. 验证 -----
-section "[6/8] 验证各模块"
+section "[6/9] 验证各模块"
 
 FAIL=0
 
@@ -208,7 +208,7 @@ if [[ "$DOWNLOAD_NOW" =~ ^[Yy] ]]; then
     echo ""
     conda run -n mod3_asr pip install -q tqdm 2>/dev/null || true
     conda run -n mod3_asr python download_models.py --cache-dir "$PROJECT_DIR/models"
-    if [ -d "$PROJECT_DIR/models/hub/models--"* ]; then
+    if ls -d "$PROJECT_DIR/models/hub/models--"* >/dev/null 2>&1; then
         check_ok "模型预下载完成 ($(du -sh "$PROJECT_DIR/models" 2>/dev/null | cut -f1))"
     else
         warn "模型预下载似乎未成功，M3 首次运行时会自动下载"
