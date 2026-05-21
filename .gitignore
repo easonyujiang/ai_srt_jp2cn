@@ -38,3 +38,6 @@ libs/
 # 输出目录
 subtitles/
 subtitles_translated/
+
+# 云端部署日志
+Cloud_log/

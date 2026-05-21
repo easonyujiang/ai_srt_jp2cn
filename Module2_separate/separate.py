@@ -26,9 +26,14 @@ def get_gpu_vram_gb():
         return 0
     try:
         total_bytes = torch.cuda.get_device_properties(0).total_mem
-        return total_bytes / (1024 ** 3)
     except Exception:
-        return 0
+        total_bytes = 0
+    if not total_bytes:
+        try:
+            total_bytes = torch.cuda.mem_get_info()[1]
+        except Exception:
+            total_bytes = 0
+    return total_bytes / (1024 ** 3) if total_bytes else 0
 
 
 def check_gpu():

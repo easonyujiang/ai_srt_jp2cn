@@ -6,7 +6,7 @@
   WhisperX / faster-whisper / transformers / pyannote 运行时同一套缓存，零配置
 
 用法:
-  python download_models.py                          # 下载全部 5 个模型
+  python download_models.py                          # 下载全部 7 个模型
   python download_models.py --skip-gated             # 跳过门控模型
   python download_models.py --repo Systran/faster-whisper-large-v2  # 指定仓库
   python download_models.py --no-mirror              # 直连 huggingface.co
@@ -108,6 +108,14 @@ MODELS = [
                   "hyperparams.yaml", "config.json",
                   "label_encoder.txt", "mean_var_norm_emb.ckpt"],
     },
+    {
+        "key": "wespeaker-voxceleb-resnet34-LM",
+        "repo": "pyannote/wespeaker-voxceleb-resnet34-LM",
+        "gated": True,
+        "gated_prompt": "https://hf-mirror.com/pyannote/wespeaker-voxceleb-resnet34-LM",
+        "description": "WeSpeaker 说话人嵌入 (pyannote 3.x 新版, ~120 MB)",
+        "allow": ["pytorch_model.bin", "config.yaml"],
+    },
 ]
 
 
@@ -141,7 +149,7 @@ def _fix_diarization_config(cache_dir: Path):
                 "params": {
                     "clustering": "AgglomerativeClustering",
                     "segmentation_batch_size": 32,
-                    "embedding": "speechbrain/spkrec-ecapa-voxceleb",
+                    "embedding": "pyannote/wespeaker-voxceleb-resnet34-LM",
                     "embedding_batch_size": 32,
                     "embedding_exclude_overlap": True,
                     "segmentation": "pyannote/segmentation-3.0",

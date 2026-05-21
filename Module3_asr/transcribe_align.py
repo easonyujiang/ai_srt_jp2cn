@@ -17,12 +17,13 @@ _LIBS_DIR = PROJECT_ROOT / "libs"
 if _LIBS_DIR.is_dir():
     os.add_dll_directory(str(_LIBS_DIR))
 
-os.environ["HF_HUB_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
 os.environ["PYANNOTE_CACHE"] = str(PROJECT_ROOT / "models" / "hub")
 
 import torch
-torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
+try:
+    torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
+except AttributeError:
+    pass
 
 import lightning_fabric.utilities.cloud_io as _lc
 _lc_orig_load = _lc._load
@@ -72,6 +73,15 @@ def _patched_ensure(self, stacklevel=1):
     finally:
         _pending.discard(target)
 _sbiu.LazyModule.ensure_module = _patched_ensure
+
+import faster_whisper.transcribe as _fwt
+_fwt_orig_init = _fwt.TranscriptionOptions.__init__
+def _fwt_patched_init(self, *args, **kwargs):
+    kwargs.setdefault('max_new_tokens', None)
+    kwargs.setdefault('clip_timestamps', '0')
+    kwargs.setdefault('hallucination_silence_threshold', None)
+    _fwt_orig_init(self, *args, **kwargs)
+_fwt.TranscriptionOptions.__init__ = _fwt_patched_init
 
 import whisperx
 from dotenv import load_dotenv
@@ -370,9 +380,14 @@ def transcribe_and_align(
     else:
         cache = DEFAULT_MODEL_CACHE.resolve()
     cache.mkdir(parents=True, exist_ok=True)
-    os.environ["HF_HOME"] = str(cache)
-    os.environ["HUGGINGFACE_HUB_CACHE"] = str(cache / "hub")
-    os.environ["PYANNOTE_CACHE"] = str(cache / "hub")
+    hub = cache / "hub"
+    if hub.is_dir() and list(hub.glob("models--*/")):
+        os.environ["HF_HOME"] = str(cache)
+        os.environ["HUGGINGFACE_HUB_CACHE"] = str(hub)
+    else:
+        os.environ.setdefault("HF_HOME", str(cache))
+        os.environ.setdefault("HUGGINGFACE_HUB_CACHE", str(hub))
+    os.environ["PYANNOTE_CACHE"] = str(hub)
     if verbose:
         print(f"[缓存] 模型目录: {cache}")
         hub = cache / "hub"

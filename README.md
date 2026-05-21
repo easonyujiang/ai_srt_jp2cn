@@ -114,7 +114,8 @@ python download_models.py --cache-dir ./models      # 指定缓存目录
 | `wav2vec2-large-xlsr-53-japanese` | ~1.2 GB | 词级对齐 |
 | `pyannote/segmentation-3.0` | ~380 MB | 语音活动检测（门控）|
 | `pyannote/speaker-diarization-3.1` | 数 MB | 说话人分割 Pipeline（门控）|
-| `speechbrain/spkrec-ecapa-voxceleb` | ~34 MB | ECAPA-TDNN 说话人嵌入（diarization 必需）|
+| `speechbrain/spkrec-ecapa-voxceleb` | ~34 MB | ECAPA-TDNN 说话人嵌入 |
+| `pyannote/wespeaker-voxceleb-resnet34-LM` | ~120 MB | WeSpeaker 说话人嵌入（pyannote 3.x 新版必需，门控）|
 
 > **注意**：如果之前用旧版下载过模型（扁平结构 `hub/pytorch_model.bin`），需清理后重下：
 > ```bash
