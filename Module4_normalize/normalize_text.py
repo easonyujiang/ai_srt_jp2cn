@@ -41,8 +41,10 @@ def save_json(data, filepath):
 
 
 def build_prompt(segments, style="retain"):
-    texts = [seg["text"] for seg in segments]
-    combined = "\n".join([f"{i}: {t}" for i, t in enumerate(texts)])
+    combined = "\n".join([
+        f"{i}: [{seg.get('speaker', 'UNKNOWN')}] {seg['text']}"
+        for i, seg in enumerate(segments)
+    ])
 
     if style == "clean":
         return f"""你是一个专业的日语文本后处理引擎。请对以下语音识别得到的日语文本进行规范化处理，严格遵循：
@@ -54,12 +56,12 @@ def build_prompt(segments, style="retain"):
    - start: 起始时间（继承或按比例分割）
    - end: 结束时间
    - text: 规范化后的文本
-   - speaker: 说话人 ID（保持与原片段一致）
+   - speaker: 说话人 ID（必须与输入片段中对应的 [说话人ID] 完全相同，一字不改）
    - original_index: 该片段对应的原始片段索引（整数，从0开始）。如一个原始片段拆分为多个，它们都使用同一个 original_index。
    - words: [] （空数组）
 5. 不能遗漏任何原始片段。
 
-原始片段（索引: 文本）：
+原始片段（索引: [说话人] 文本）：
 {combined}
 
 请输出处理后的 JSON 数组（不要附加任何解释）：
@@ -79,12 +81,12 @@ def build_prompt(segments, style="retain"):
    - start: 起始时间（从原始对应片段继承，若拆分则按文本长度比例分配）
    - end: 结束时间
    - text: 清洗后的文本
-   - speaker: 说话人 ID（保持原样）
+   - speaker: 说话人 ID（必须与输入片段中对应的 [说话人ID] 完全相同，一字不改）
    - original_index: 该片段在输入原始片段列表中的索引（整数，从0开始）。如果原始一个片段被拆分为多个，则它们都使用同一个 original_index。
    - words: [] （空数组）
 7. 确保原始所有片段都有对应输出，分段数可以变化。
 
-原始片段（索引: 文本）：
+原始片段（索引: [说话人] 文本）：
 {combined}
 
 请输出处理后的 JSON 数组（不要附加任何解释）：

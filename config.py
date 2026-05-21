@@ -121,7 +121,7 @@ DEFAULT_MIN_DURATION = 0.5         # 过滤极短片段
 
 # M6: 翻译
 DEFAULT_TRANSLATION_STYLE = "creative"   # 网络化口语翻译
-DEFAULT_TRANSLATION_CHUNK_SIZE = 50      # 翻译切片条数
+DEFAULT_TRANSLATION_CHUNK_SIZE = 20      # 翻译切片条数（过大易导致API返回格式异常）
 
 # ---------- Conda 可执行文件路径（旧方式，已废弃） ----------
 # CONDA_EXE = r"C:\ProgramData\anaconda3\Scripts\conda.exe"

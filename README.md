@@ -15,7 +15,7 @@
 | **M1** 解复用 | 视频提取为 16kHz 单声道 WAV | ffmpeg | - |
 | **M2** 人声分离 | 分离背景音/人声 | Demucs (htdemucs) | - |
 | **M3** ASR 转写 | 语音识别 + 词级时间戳 + 多说话人分离 | WhisperX (large-v2) + pyannote + ECAPA-TDNN | HuggingFace |
-| **M4** 规范化 | 修正 ASR 错误、口语整理 | DeepSeek | DeepSeek API |
+| **M4** 规范化 | 修正 ASR 错误、口语整理、保留说话人标签 | DeepSeek | DeepSeek API |
 | **M5** 字幕生成 | 轴文重构，输出 SRT/ASS | Python 标准库 | - |
 | **M6** 翻译 | 日译中，保留口语化表达 | DeepSeek | DeepSeek API |
 
@@ -285,6 +285,7 @@ sudo shutdown -h now
 | `DEFAULT_NORM_STYLE` | `"retain"` | 规范化风格 (retain/clean) |
 | `DEFAULT_SUBTITLE_FORMAT` | `"ass"` | 字幕格式 (ass/srt) |
 | `DEFAULT_TRANSLATION_STYLE` | `"creative"` | 翻译风格 |
+| `DEFAULT_TRANSLATION_CHUNK_SIZE` | `20` | 翻译切片大小（过大易导致 API 返回格式异常） |
 
 ### 命令行参数
 

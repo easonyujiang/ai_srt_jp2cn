@@ -186,9 +186,12 @@ def parse_translation_response(text: str, expected_count: int) -> List[str]:
     except json.JSONDecodeError:
         m = re.search(r'\[.*\]', text, re.DOTALL)
         if m:
-            data = json.loads(m.group())
+            try:
+                data = json.loads(m.group())
+            except json.JSONDecodeError:
+                raise ValueError(f"无法解析模型输出（JSON 语法错误），原文前200字: {text[:200]}")
         else:
-            raise ValueError("无法解析模型输出。")
+            raise ValueError(f"无法解析模型输出（未找到JSON数组），原文前200字: {text[:200]}")
     translations = []
     for item in data:
         if isinstance(item, dict) and "text" in item:
@@ -198,7 +201,10 @@ def parse_translation_response(text: str, expected_count: int) -> List[str]:
         else:
             translations.append(str(item))
     if len(translations) != expected_count:
-        raise ValueError(f"译文数量 ({len(translations)}) 与原文数量 ({expected_count}) 不匹配。")
+        raise ValueError(
+            f"译文数量 ({len(translations)}) 与原文数量 ({expected_count}) 不匹配。"
+            f"\n原始响应前300字: {text[:300]}"
+        )
     return translations
 
 
