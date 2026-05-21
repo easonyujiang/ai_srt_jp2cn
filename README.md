@@ -223,6 +223,30 @@ python pipeline.py
 python pipeline.py video.mp4
 ```
 
+#### Web 前端模式
+
+启动 Web 服务器，通过浏览器远程操作流水线：
+
+```bash
+# 安装 Flask 依赖
+pip install flask
+
+# 启动 Web 服务器（默认 http://127.0.0.1:5000）
+python web_server.py
+
+# 自定义端口和地址
+python web_server.py --port 8080 --host 0.0.0.0
+```
+
+浏览器打开后提供以下功能：
+- **拖拽上传**视频文件（支持 MP4/MKV/AVI/MOV/FLV）
+- **可视化参数配置**：Whisper 模型、说话人数、字幕格式、翻译风格等
+- **实时进度条**：6 个模块独立显示，带百分比
+- **实时日志流**：SSE 推送，彩色分级显示（info/debug/warn/error）
+- **字幕下载**：完成后自动刷新列表，支持下载日文/中文字幕
+
+> **注意**：Web 前端复用了 `pipeline.py` 的 `PipelineRunner` 和 `config.py`，详见 [web_server.py](web_server.py) 和 [templates/index.html](templates/index.html)。
+
 #### 单独运行某模块
 
 ```bash
@@ -272,7 +296,17 @@ python pipeline.py videos/你的视频.mp4
 sudo shutdown -h now
 ```
 
-> 脚本自动完成：GPU 检测 → 安装系统依赖 → 克隆仓库 → 创建 6 个独立环境 → 安装 PyTorch/Demucs/WhisperX → 自动检测 HF 直连/镜像 → 验证安装
+> 脚本自动完成：GPU 检测 → 安装系统依赖 → 克隆仓库 → 创建 6 个独立环境 → 安装 PyTorch/Demucs/WhisperX（含 cudatoolkit） → 自动检测 HF 直连/镜像 → 模型预下载（含 wespeaker） → 验证安装
+
+### 云端已知问题与处理
+
+| 问题 | 现象 | 方案 |
+|------|------|------|
+| cuBLAS 缺失 | `libcublas.so.11 not found` | 部署脚本已自动安装 `cudatoolkit=11.8` |
+| 显存检测为 0GB | M2 显示 `(0.0 GB)` 低显存模式 | 不影响运行，V100 自动降级为分片处理 |
+| 模型缓存路径 | pyannote 找不到本地文件 | 部署脚本自动创建 `models/hub → ~/.cache/huggingface/hub` 软链接 |
+| faster-whisper API 变更 | `TranscriptionOptions missing arguments` | `transcribe_align.py` 已内置 monkey-patch 兼容 ctranslate2 3.20 |
+| PyAV 编译失败 | 缺少 ffmpeg 开发库 | 部署脚本已自动安装 `libav*-dev` |
 
 ## 配置参数
 

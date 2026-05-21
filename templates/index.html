@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 字幕生成流水线 - 日语→中文</title>
+<style>
+:root {
+    --bg: #0f1117;
+    --panel-bg: #1a1d27;
+    --border: #2a2d3a;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent-glow: rgba(88,166,255,0.15);
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #a371f7;
+    --orange: #d1864b;
+    --radius: 8px;
+    --transition: 0.2s ease;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.header {
+    background: linear-gradient(135deg, #1a1d27 0%, #1f2330 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-shrink: 0;
+}
+
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+}
+.header-title { font-size: 18px; font-weight: 600; letter-spacing: -0.3px; }
+.header-sub { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+
+.status-badge {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 20px;
+    font-size: 13px; font-weight: 500;
+    background: #1f2330; border: 1px solid var(--border);
+}
+.status-dot { width: 8px; height: 8px; border-radius: 50%; }
+.status-dot.idle { background: var(--text-dim); }
+.status-dot.running { background: var(--accent); animation: pulse 1.5s infinite; }
+.status-dot.completed { background: var(--green); }
+.status-dot.error { background: var(--red); }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.main {
+    display: flex; flex: 1; overflow: hidden;
+}
+
+.sidebar {
+    width: 340px; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    overflow: hidden;
+}
+
+.sidebar-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+}
+
+.section-title {
+    font-size: 12px; font-weight: 600; text-transform: uppercase;
+    color: var(--text-dim); letter-spacing: 0.5px; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+}
+
+.video-list {
+    flex: 1; overflow-y: auto; padding: 0;
+}
+.video-item {
+    padding: 10px 16px; cursor: pointer;
+    border-bottom: 1px solid rgba(42,45,58,0.5);
+    display: flex; align-items: center; justify-content: space-between;
+    transition: background var(--transition);
+}
+.video-item:hover { background: rgba(88,166,255,0.05); }
+.video-item.selected { background: rgba(88,166,255,0.1); border-left: 3px solid var(--accent); padding-left: 13px; }
+.video-name { font-size: 13px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-size { font-size: 11px; color: var(--text-dim); flex-shrink: 0; margin-left: 8px; }
+
+.empty-hint {
+    padding: 32px 16px; text-align: center;
+    color: var(--text-dim); font-size: 13px;
+}
+
+.upload-zone {
+    border: 2px dashed var(--border); border-radius: var(--radius);
+    padding: 20px; text-align: center; cursor: pointer;
+    transition: all var(--transition);
+    background: rgba(255,255,255,0.01);
+}
+.upload-zone:hover { border-color: var(--accent); background: var(--accent-glow); }
+.upload-zone.dragover { border-color: var(--accent); background: var(--accent-glow); }
+.upload-icon { font-size: 24px; margin-bottom: 6px; }
+.upload-text { font-size: 13px; color: var(--text-dim); }
+.upload-text span { color: var(--accent); }
+
+.param-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+}
+.param-item { display: flex; flex-direction: column; gap: 4px; }
+.param-label { font-size: 11px; color: var(--text-dim); }
+.param-item select, .param-item input {
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 10px; font-size: 13px; outline: none;
+    transition: border-color var(--transition);
+    width: 100%;
+}
+.param-item select:focus, .param-item input:focus { border-color: var(--accent); }
+
+.btn {
+    width: 100%; padding: 10px 16px; border: none; border-radius: var(--radius);
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: all var(--transition); display: flex; align-items: center;
+    justify-content: center; gap: 8px;
+}
+.btn-primary { background: linear-gradient(135deg, var(--accent), #3d7fd9); color: #fff; }
+.btn-primary:hover { box-shadow: 0 0 20px var(--accent-glow); transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-secondary { background: var(--panel-bg); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--accent); }
+.btn-sm { padding: 4px 10px; font-size: 11px; width: auto; border-radius: 4px; }
+
+.content {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+
+.progress-panel {
+    padding: 20px 24px; border-bottom: 1px solid var(--border);
+    background: rgba(26,29,39,0.5);
+}
+
+.progress-header {
+    display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+}
+.progress-title { font-size: 15px; font-weight: 600; }
+.progress-pct { font-size: 14px; color: var(--accent); font-weight: 600; }
+
+.progress-bar-outer {
+    height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-bottom: 14px;
+}
+.progress-bar-inner {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--purple));
+    transition: width 0.5s ease;
+    width: 0%;
+}
+
+.steps { display: flex; gap: 8px; }
+.step {
+    flex: 1; text-align: center; padding: 8px 4px; border-radius: var(--radius);
+    background: var(--panel-bg); border: 1px solid var(--border);
+    font-size: 11px; transition: all var(--transition);
+}
+.step-num { font-weight: 700; font-size: 13px; margin-bottom: 2px; }
+.step-name { color: var(--text-dim); font-size: 10px; }
+.step.active { border-color: var(--accent); background: var(--accent-glow); }
+.step.active .step-num { color: var(--accent); }
+.step.active .step-name { color: var(--accent); }
+.step.done { border-color: var(--green); background: rgba(63,185,80,0.08); }
+.step.done .step-num { color: var(--green); }
+.step.done .step-name { color: var(--green); }
+
+.log-panel {
+    flex: 1; overflow: hidden; display: flex; flex-direction: column;
+    padding: 0 24px 16px;
+}
+.log-header {
+    padding: 12px 0; display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+}
+.log-title { font-size: 13px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.log-console {
+    flex: 1; overflow-y: auto;
+    background: #0a0c12; border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px; font-family: "Cascadia Code", "Fira Code", "Consolas", monospace;
+    font-size: 12px; line-height: 1.7;
+}
+.log-line { word-break: break-all; }
+.log-line.info { color: var(--text); }
+.log-line.debug { color: var(--text-dim); }
+.log-line.warn { color: var(--yellow); }
+.log-line.error { color: var(--red); }
+
+.subtitle-panel {
+    padding: 16px 24px; border-top: 1px solid var(--border);
+    background: rgba(26,29,39,0.5); max-height: 200px; overflow-y: auto;
+}
+.sub-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0; border-bottom: 1px solid rgba(42,45,58,0.3);
+    font-size: 13px;
+}
+.sub-item:last-child { border-bottom: none; }
+.sub-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.sub-meta { font-size: 11px; color: var(--text-dim); margin: 0 12px; flex-shrink: 0; }
+.sub-badge {
+    font-size: 10px; padding: 2px 6px; border-radius: 3px; font-weight: 600;
+    margin-right: 8px;
+}
+.sub-badge.src { background: rgba(88,166,255,0.15); color: var(--accent); }
+.sub-badge.cn { background: rgba(63,185,80,0.15); color: var(--green); }
+
+.download-btn {
+    font-size: 11px; padding: 4px 12px; border-radius: 4px;
+    border: 1px solid var(--border); background: var(--panel-bg);
+    color: var(--accent); cursor: pointer; text-decoration: none;
+    transition: all var(--transition); flex-shrink: 0;
+}
+.download-btn:hover { background: var(--accent-glow); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3d4a; }
+
+.toast {
+    position: fixed; top: 20px; right: 20px; z-index: 1000;
+    padding: 12px 20px; border-radius: var(--radius); font-size: 13px;
+    font-weight: 500; animation: slideIn 0.3s ease;
+    max-width: 400px; word-break: break-word;
+}
+.toast.success { background: #1a3a25; border: 1px solid var(--green); color: var(--green); }
+.toast.error { background: #3a1a1a; border: 1px solid var(--red); color: var(--red); }
+.toast.info { background: #1a253a; border: 1px solid var(--accent); color: var(--accent); }
+
+@keyframes slideIn {
+    from { transform: translateX(100px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+input[type="file"] { display: none; }
+
+@media (max-width: 800px) {
+    .main { flex-direction: column; }
+    .sidebar { width: 100%; max-height: 50vh; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <div class="header-icon">🎬</div>
+        <div>
+            <div class="header-title">AI 字幕生成流水线</div>
+            <div class="header-sub">日语视频 → 中文字幕 · 全自动 M1→M6</div>
+        </div>
+    </div>
+    <div class="status-badge" id="statusBadge">
+        <span class="status-dot idle" id="statusDot"></span>
+        <span id="statusText">就绪</span>
+    </div>
+</div>
+
+<div class="main">
+    <div class="sidebar">
+        <div class="sidebar-section">
+            <div class="section-title">📁 上传视频</div>
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">📤</div>
+                <div class="upload-text">拖拽视频到此处 或 <span>点击选择</span></div>
+                <div style="font-size:11px;color:var(--text-dim);margin-top:4px">支持 MP4 / MKV / AVI / MOV / FLV</div>
+            </div>
+            <input type="file" id="fileInput" accept=".mp4,.mkv,.avi,.mov,.flv">
+        </div>
+
+        <div class="sidebar-section" style="flex:1;display:flex;flex-direction:column;padding-bottom:0;">
+            <div class="section-title">🎥 视频列表</div>
+            <div class="video-list" id="videoList">
+                <div class="empty-hint">加载中...</div>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <div class="section-title">⚙️ 参数配置</div>
+            <div class="param-grid">
+                <div class="param-item">
+                    <label class="param-label">Whisper 模型</label>
+                    <select id="paramModel">
+                        <option value="large-v2">large-v2 (推荐)</option>
+                        <option value="medium">medium</option>
+                        <option value="small">small</option>
+                        <option value="base">base</option>
+                        <option value="tiny">tiny</option>
+                    </select>
+                </div>
+                <div class="param-item">
+                    <label class="param-label">最大说话人数</label>
+                    <input type="number" id="paramSpeakers" value="5" min="1" max="10">
+                </div>
+                <div class="param-item">
+                    <label class="param-label">字幕格式</label>
+                    <select id="paramFormat">
+                        <option value="ass">ASS (带样式)</option>
+                        <option value="srt">SRT (纯文本)</option>
+                    </select>
+                </div>
+                <div class="param-item">
+                    <label class="param-label">翻译风格</label>
+                    <select id="paramTransStyle">
+                        <option value="creative">创意网络化</option>
+                        <option value="literal">直译</option>
+                    </select>
+                </div>
+                <div class="param-item">
+                    <label class="param-label">文本规范化</label>
+                    <select id="paramNormStyle">
+                        <option value="retain">保留娱乐性</option>
+                        <option value="clean">强规范化</option>
+                    </select>
+                </div>
+                <div class="param-item">
+                    <label class="param-label">计算设备</label>
+                    <select id="paramDevice">
+                        <option value="cuda">CUDA (GPU)</option>
+                        <option value="cpu">CPU</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="sidebar-section">
+            <button class="btn btn-primary" id="startBtn" onclick="startPipeline()">
+                🚀 开始处理
+            </button>
+        </div>
+    </div>
+
+    <div class="content">
+        <div class="progress-panel" id="progressPanel">
+            <div class="progress-header">
+                <span class="progress-title" id="progressTitle">等待任务...</span>
+                <span class="progress-pct" id="progressPct">0%</span>
+            </div>
+            <div class="progress-bar-outer">
+                <div class="progress-bar-inner" id="progressBar"></div>
+            </div>
+            <div class="steps" id="stepsContainer">
+                <div class="step"><div class="step-num">M1</div><div class="step-name">音频提取</div></div>
+                <div class="step"><div class="step-num">M2</div><div class="step-name">人声分离</div></div>
+                <div class="step"><div class="step-num">M3</div><div class="step-name">ASR转写</div></div>
+                <div class="step"><div class="step-num">M4</div><div class="step-name">文本规范</div></div>
+                <div class="step"><div class="step-num">M5</div><div class="step-name">字幕生成</div></div>
+                <div class="step"><div class="step-num">M6</div><div class="step-name">翻译</div></div>
+            </div>
+        </div>
+
+        <div class="log-panel">
+            <div class="log-header">
+                <span class="log-title">📋 运行日志</span>
+                <button class="btn btn-secondary btn-sm" onclick="clearLogs()">清除</button>
+            </div>
+            <div class="log-console" id="logConsole">
+                <div class="log-line info">等待任务开始...</div>
+            </div>
+        </div>
+
+        <div class="subtitle-panel" id="subtitlePanel" style="display:none">
+            <div class="section-title" style="margin-bottom:8px">📝 已生成字幕</div>
+            <div id="subtitleList"></div>
+        </div>
+    </div>
+</div>
+
+<div id="toastContainer"></div>
+
+<script>
+let selectedVideo = null;
+let eventSource = null;
+let isRunning = false;
+
+const stepNames = ['M1 音频提取', 'M2 人声分离', 'M3 ASR转写', 'M4 文本规范化', 'M5 字幕生成', 'M6 翻译'];
+
+function toast(msg, type) {
+    const container = document.getElementById('toastContainer');
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity 0.3s'; }, 3000);
+    setTimeout(() => el.remove(), 3300);
+}
+
+function updateStatus(status, text) {
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    dot.className = 'status-dot ' + status;
+    txt.textContent = text;
+}
+
+function connectSSE() {
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource('/api/stream');
+
+    eventSource.onmessage = function(e) {
+        try {
+            const msg = JSON.parse(e.data);
+            switch (msg.type) {
+                case 'connected':
+                    if (msg.data && msg.data.status === 'running') {
+                        updateUIForRunning(msg.data);
+                    }
+                    break;
+                case 'status':
+                    handleStatus(msg.data);
+                    break;
+                case 'progress':
+                    handleProgress(msg.data);
+                    break;
+                case 'log':
+                    appendLog(msg.data);
+                    break;
+                case 'heartbeat':
+                    break;
+            }
+        } catch (err) {}
+    };
+
+    eventSource.onerror = function() {
+        setTimeout(() => {
+            if (eventSource && eventSource.readyState === EventSource.CLOSED) {
+                connectSSE();
+            }
+        }, 3000);
+    };
+}
+
+function handleStatus(data) {
+    const progressBar = document.getElementById('progressBar');
+    const progressPct = document.getElementById('progressPct');
+    const progressTitle = document.getElementById('progressTitle');
+    const startBtn = document.getElementById('startBtn');
+
+    if (data.status === 'running') {
+        isRunning = true;
+        updateStatus('running', '运行中');
+        startBtn.disabled = true;
+        startBtn.innerHTML = '⏳ 处理中...';
+    } else if (data.status === 'completed') {
+        isRunning = false;
+        updateStatus('completed', '完成');
+        progressBar.style.width = '100%';
+        progressPct.textContent = '100%';
+        progressTitle.textContent = '完成！字幕已生成';
+        startBtn.disabled = false;
+        startBtn.innerHTML = '🚀 开始处理';
+        resetAllSteps();
+        markAllStepsDone();
+        toast('流水线成功完成！', 'success');
+        refreshSubtitles();
+    } else if (data.status === 'error') {
+        isRunning = false;
+        updateStatus('error', '错误');
+        progressTitle.textContent = '处理失败';
+        startBtn.disabled = false;
+        startBtn.innerHTML = '🚀 开始处理';
+        resetAllSteps();
+        toast(data.error || '流水线执行失败', 'error');
+    }
+}
+
+function handleProgress(data) {
+    const progressBar = document.getElementById('progressBar');
+    const progressPct = document.getElementById('progressPct');
+    const progressTitle = document.getElementById('progressTitle');
+    const steps = document.querySelectorAll('#stepsContainer .step');
+
+    const step = data.step || 0;
+    const total = data.total || 6;
+    const stepProgress = data.step_progress || 0;
+    const overallPct = Math.round(((step - 1 + stepProgress) / total) * 100);
+
+    progressBar.style.width = overallPct + '%';
+    progressPct.textContent = overallPct + '%';
+
+    if (data.step_name) {
+        progressTitle.textContent = '正在执行: ' + data.step_name + ' (' + Math.round(stepProgress * 100) + '%)';
+    }
+
+    steps.forEach((s, i) => {
+        const idx = i + 1;
+        s.classList.remove('active', 'done');
+        if (idx < step) s.classList.add('done');
+        else if (idx === step) s.classList.add('active');
+    });
+}
+
+function updateUIForRunning(data) {
+    isRunning = true;
+    updateStatus('running', '运行中');
+    document.getElementById('startBtn').disabled = true;
+    document.getElementById('startBtn').innerHTML = '⏳ 处理中...';
+    handleProgress(data);
+}
+
+function resetAllSteps() {
+    document.querySelectorAll('#stepsContainer .step').forEach(s => {
+        s.classList.remove('active', 'done');
+    });
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('progressPct').textContent = '0%';
+}
+
+function markAllStepsDone() {
+    document.querySelectorAll('#stepsContainer .step').forEach(s => s.classList.add('done'));
+}
+
+function appendLog(msg) {
+    const console = document.getElementById('logConsole');
+    let cls = 'info';
+    const lower = msg.toLowerCase();
+    if (lower.includes('[debug]')) cls = 'debug';
+    else if (lower.includes('warning') || lower.includes('[warn')) cls = 'warn';
+    else if (lower.includes('error') || lower.includes('错误') || lower.includes('失败')) cls = 'error';
+
+    const div = document.createElement('div');
+    div.className = 'log-line ' + cls;
+    div.textContent = msg;
+    console.appendChild(div);
+    console.scrollTop = console.scrollHeight;
+
+    if (console.children.length > 500) {
+        for (let i = 0; i < 20; i++) {
+            if (console.firstChild) console.removeChild(console.firstChild);
+        }
+    }
+}
+
+function clearLogs() {
+    const console = document.getElementById('logConsole');
+    console.innerHTML = '';
+}
+
+async function loadVideos() {
+    try {
+        const res = await fetch('/api/videos');
+        const data = await res.json();
+        const container = document.getElementById('videoList');
+
+        if (data.videos.length === 0) {
+            container.innerHTML = '<div class="empty-hint">暂无视频<br><span style="font-size:11px">请上传或放入 videos/ 目录</span></div>';
+        } else {
+            container.innerHTML = data.videos.map((v, i) => `
+                <div class="video-item" data-index="${i}" data-path="${v.path.replace(/"/g, '&quot;')}" onclick="selectVideo(this, '${v.path.replace(/'/g, "\\'")}')">
+                    <span class="video-name">${v.name}</span>
+                    <span class="video-size">${v.size_mb} MB</span>
+                </div>
+            `).join('');
+        }
+    } catch (err) {
+        document.getElementById('videoList').innerHTML = '<div class="empty-hint">加载失败</div>';
+    }
+}
+
+function selectVideo(el, path) {
+    document.querySelectorAll('.video-item').forEach(i => i.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedVideo = path;
+}
+
+async function refreshSubtitles() {
+    try {
+        const res = await fetch('/api/subtitles');
+        const data = await res.json();
+        const panel = document.getElementById('subtitlePanel');
+        const list = document.getElementById('subtitleList');
+
+        if (data.subtitles.length === 0) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        panel.style.display = 'block';
+        list.innerHTML = data.subtitles.slice(0, 20).map(s => `
+            <div class="sub-item">
+                <span class="sub-badge ${s.dir.includes('translated') ? 'cn' : 'src'}">${s.dir.includes('translated') ? 'CN' : 'JP'}</span>
+                <span class="sub-name" title="${s.name}">${s.name}</span>
+                <span class="sub-meta">${s.size_kb} KB</span>
+                <a class="download-btn" href="/api/download?name=${encodeURIComponent(s.name)}" download>⬇ 下载</a>
+            </div>
+        `).join('');
+    } catch (err) {}
+}
+
+async function startPipeline() {
+    if (isRunning) {
+        toast('流水线正在运行中', 'info');
+        return;
+    }
+    if (!selectedVideo) {
+        toast('请先选择一个视频', 'error');
+        return;
+    }
+
+    const params = {
+        video_path: selectedVideo,
+        whisper_model: document.getElementById('paramModel').value,
+        max_speakers: parseInt(document.getElementById('paramSpeakers').value) || 5,
+        subtitle_format: document.getElementById('paramFormat').value,
+        norm_style: document.getElementById('paramNormStyle').value,
+        translation_style: document.getElementById('paramTransStyle').value,
+        device: document.getElementById('paramDevice').value,
+        compute_type: 'int8',
+    };
+
+    try {
+        const res = await fetch('/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(params)
+        });
+        const data = await res.json();
+        if (data.error) {
+            toast(data.error, 'error');
+        } else {
+            resetAllSteps();
+            clearLogs();
+            toast('流水线已启动', 'success');
+        }
+    } catch (err) {
+        toast('请求失败: ' + err.message, 'error');
+    }
+}
+
+async function checkEnv() {
+    try {
+        const res = await fetch('/api/env-check');
+        const data = await res.json();
+        if (!data.valid) {
+            const errors = data.errors.filter(e => e.trim());
+            if (errors.length > 0) {
+                appendLog('环境检查警告: ' + errors.join('; '));
+            }
+        }
+    } catch (err) {}
+}
+
+document.getElementById('fileInput').addEventListener('change', async function() {
+    const file = this.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const res = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+        if (data.error) {
+            toast(data.error, 'error');
+        } else {
+            toast('上传成功: ' + data.name, 'success');
+            await loadVideos();
+        }
+    } catch (err) {
+        toast('上传失败: ' + err.message, 'error');
+    }
+    this.value = '';
+});
+
+const uploadZone = document.getElementById('uploadZone');
+uploadZone.addEventListener('dragover', function(e) {
+    e.preventDefault();
+    this.classList.add('dragover');
+});
+uploadZone.addEventListener('dragleave', function() {
+    this.classList.remove('dragover');
+});
+uploadZone.addEventListener('drop', function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) {
+        document.getElementById('fileInput').files = e.dataTransfer.files;
+        document.getElementById('fileInput').dispatchEvent(new Event('change'));
+    }
+});
+
+connectSSE();
+loadVideos();
+checkEnv();
+refreshSubtitles();
+
+setInterval(refreshSubtitles, 30000);
+</script>
+</body>
+</html>
