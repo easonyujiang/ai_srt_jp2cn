@@ -34,3 +34,7 @@ web/
 
 # cuDNN DLL（~900MB，通过脚本下载）
 libs/
+
+# 输出目录
+subtitles/
+subtitles_translated/
