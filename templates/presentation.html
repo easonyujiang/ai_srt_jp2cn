@@ -1,0 +1,1087 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI-SRT 日译中字幕生成流水线 — 模块化技术讲解</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@500;700;900&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --bg-deep:#050510;
+  --bg-card:rgba(20,20,50,0.55);
+  --border:rgba(255,255,255,0.08);
+  --text:#e8e8f4;
+  --text2:#a8a8c8;
+  --text3:#707098;
+  --cyan:#00c8ff;
+  --blue:#4b8cf6;
+  --purple:#9b6cff;
+  --amber:#f5a623;
+  --emerald:#10b981;
+  --rose:#f43f5e;
+  --glow-cyan:0 0 40px rgba(0,200,255,0.18);
+  --font-display:'Noto Sans JP','Inter',-apple-system,sans-serif;
+  --font-body:'Inter',-apple-system,sans-serif;
+  --font-mono:'JetBrains Mono','Consolas',monospace;
+}
+
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg-deep);color:var(--text);
+  font-family:var(--font-body);line-height:1.72;
+  overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--bg-deep)}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:3px}
+
+/* BG */
+.bg-grid{
+  position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.025;
+  background-image:linear-gradient(rgba(255,255,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.06) 1px,transparent 1px);
+  background-size:64px 64px;
+}
+#bg-canvas{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.25}
+
+/* ===== SLIDE SYSTEM ===== */
+.slide{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;
+  position:relative;z-index:1;padding:80px 0;
+}
+.slide-inner{width:100%;max-width:1180px;padding:0 56px;position:relative;z-index:1}
+
+.slide-tag{
+  display:inline-flex;align-items:center;gap:10px;
+  font-family:var(--font-mono);font-size:.85rem;font-weight:500;
+  color:var(--cyan);text-transform:uppercase;letter-spacing:.14em;
+  margin-bottom:1.2rem;
+}
+.slide-tag::before{content:'';width:24px;height:1px;background:linear-gradient(90deg,var(--cyan),transparent)}
+.slide-tag::after{content:'';width:24px;height:1px;background:linear-gradient(90deg,transparent,var(--cyan))}
+
+.slide-h1{
+  font-family:var(--font-display);font-size:clamp(2.6rem,4.2vw,3.8rem);
+  font-weight:800;line-height:1.15;margin-bottom:1.2rem;
+  background:linear-gradient(135deg,var(--text) 0%,var(--cyan) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.slide-h2{
+  font-family:var(--font-display);font-size:clamp(1.8rem,2.8vw,2.4rem);
+  font-weight:700;margin-bottom:1rem;color:var(--text);
+}
+.slide-desc{font-size:1.2rem;color:var(--text2);max-width:750px;line-height:1.85;margin-bottom:2rem}
+
+/* ===== NAV ===== */
+.sidebar-nav{
+  position:fixed;right:32px;top:50%;transform:translateY(-50%);
+  z-index:100;display:flex;flex-direction:column;gap:12px;
+  background:rgba(5,5,20,.7);padding:18px 12px;border-radius:28px;
+  border:1px solid var(--border);backdrop-filter:blur(10px);
+}
+.nav-dot{
+  width:10px;height:10px;border-radius:50%;
+  background:rgba(255,255,255,.15);transition:all .35s;
+  cursor:pointer;position:relative;
+}
+.nav-dot:hover{background:rgba(255,255,255,.4);transform:scale(1.35)}
+.nav-dot.active{background:var(--cyan);box-shadow:0 0 12px var(--cyan)}
+.nav-dot .tooltip{
+  position:absolute;right:24px;top:50%;transform:translateY(-50%);
+  white-space:nowrap;font-size:.72rem;font-family:var(--font-mono);
+  color:var(--text2);opacity:0;pointer-events:none;transition:opacity .25s;
+}
+.nav-dot:hover .tooltip,.nav-dot.active .tooltip{opacity:1}
+
+.kbd-hint{
+  position:fixed;bottom:32px;right:32px;z-index:100;
+  font-family:var(--font-mono);font-size:.72rem;color:var(--text3);
+  display:flex;gap:8px;align-items:center;
+}
+.kbd-hint kbd{
+  padding:3px 10px;border-radius:5px;border:1px solid var(--border);
+  background:rgba(15,15,40,.7);font-size:.72rem;
+}
+.page-counter{
+  position:fixed;bottom:32px;left:32px;z-index:100;
+  font-family:var(--font-mono);font-size:.78rem;color:var(--text3);
+}
+
+/* ===== COVER ===== */
+#slide-cover{text-align:center}
+.cover-badge{
+  display:inline-flex;align-items:center;gap:8px;padding:7px 22px;
+  border-radius:100px;border:1px solid rgba(0,200,255,.25);
+  background:rgba(0,200,255,.05);font-family:var(--font-mono);
+  font-size:.88rem;color:var(--cyan);margin-bottom:2rem;
+}
+.cover-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--cyan);animation:pulse-dot 2s ease-in-out infinite}
+@keyframes pulse-dot{0%,100%{opacity:1;box-shadow:0 0 8px var(--cyan)}50%{opacity:.3;box-shadow:0 0 16px var(--cyan)}}
+
+.cover-title{font-family:var(--font-display);font-size:clamp(3.6rem,7vw,5.6rem);font-weight:900;line-height:1.08;margin-bottom:1.8rem}
+.cover-title .grad{
+  background:linear-gradient(135deg,var(--cyan) 0%,var(--blue) 45%,var(--purple) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.cover-sub{font-size:1.35rem;color:var(--text2);max-width:700px;margin:0 auto 3rem;line-height:1.85}
+.cover-modules{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;margin-bottom:3.5rem}
+.cover-module{
+  padding:12px 28px;border-radius:14px;border:1px solid var(--border);
+  background:var(--bg-card);font-family:var(--font-mono);font-size:.95rem;
+  font-weight:600;transition:all .35s;cursor:default;
+}
+.cover-module:hover{transform:translateY(-3px)}
+.cover-module.m1{border-color:rgba(75,140,246,.35);color:var(--blue)}
+.cover-module.m2{border-color:rgba(155,108,255,.35);color:var(--purple)}
+.cover-module.m3{border-color:rgba(0,200,255,.35);color:var(--cyan)}
+.cover-module.m4{border-color:rgba(245,166,35,.35);color:var(--amber)}
+.cover-module.m5{border-color:rgba(16,185,129,.35);color:var(--emerald)}
+.cover-module.m6{border-color:rgba(244,63,94,.35);color:var(--rose)}
+.cover-hint{
+  display:flex;flex-direction:column;align-items:center;gap:8px;
+  color:var(--text3);font-size:.82rem;animation:float-up-down 2s ease-in-out infinite;
+}
+.cover-hint svg{width:26px;height:26px;opacity:.5}
+@keyframes float-up-down{0%,100%{transform:translateY(0)}50%{transform:translateY(8px)}}
+
+/* ===== MODULE HEADER ===== */
+.module-header{display:flex;align-items:center;gap:20px;margin-bottom:2.2rem}
+.module-num{
+  width:68px;height:68px;border-radius:16px;display:flex;flex-shrink:0;
+  align-items:center;justify-content:center;
+  font-family:var(--font-mono);font-size:1.7rem;font-weight:700;
+}
+.module-num.m1{background:rgba(75,140,246,.12);color:var(--blue);border:1px solid rgba(75,140,246,.3)}
+.module-num.m2{background:rgba(155,108,255,.12);color:var(--purple);border:1px solid rgba(155,108,255,.3)}
+.module-num.m3{background:rgba(0,200,255,.12);color:var(--cyan);border:1px solid rgba(0,200,255,.3)}
+.module-num.m4{background:rgba(245,166,35,.12);color:var(--amber);border:1px solid rgba(245,166,35,.3)}
+.module-num.m5{background:rgba(16,185,129,.12);color:var(--emerald);border:1px solid rgba(16,185,129,.3)}
+.module-num.m6{background:rgba(244,63,94,.12);color:var(--rose);border:1px solid rgba(244,63,94,.3)}
+.module-header-info h3{font-family:var(--font-display);font-weight:700;font-size:1.8rem}
+.module-header-info .filepath{font-family:var(--font-mono);font-size:.75rem;color:var(--text3);margin-top:4px}
+.module-header-info .dep{font-size:.9rem;color:var(--text2);margin-top:4px}
+
+/* ===== IO BOX ===== */
+.io-box{display:flex;align-items:center;gap:20px;margin-bottom:2rem;flex-wrap:wrap}
+.io-item{
+  flex:1;min-width:260px;padding:24px 30px;border-radius:16px;
+  border:1px solid var(--border);background:var(--bg-card);
+}
+.io-item .io-label{font-family:var(--font-mono);font-size:.78rem;color:var(--text3);text-transform:uppercase;margin-bottom:10px}
+.io-item .io-val{font-family:var(--font-mono);font-size:.98rem;color:var(--text);font-weight:500}
+.io-item.in{border-left:4px solid var(--emerald)}
+.io-item.out{border-left:4px solid var(--blue)}
+.io-arrow{font-size:1.8rem;color:var(--cyan);font-weight:700;flex-shrink:0}
+
+/* ===== FEATURE CARDS ===== */
+.feat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin:1.5rem 0}
+.feat-card{
+  padding:26px 30px;border-radius:16px;border:1px solid var(--border);
+  background:var(--bg-card);transition:all .35s;
+}
+.feat-card:hover{transform:translateY(-3px);border-color:rgba(255,255,255,.14);box-shadow:0 14px 44px rgba(0,0,0,.3)}
+.feat-card .feat-icon{font-size:1.8rem;margin-bottom:12px}
+.feat-card h4{font-weight:600;font-size:1.08rem;margin-bottom:8px}
+.feat-card p{font-size:.92rem;color:var(--text2);line-height:1.75}
+
+/* single column for fewer cards */
+.feat-stack{display:flex;flex-direction:column;gap:20px;margin:1.5rem 0}
+.feat-stack .feat-card{flex:1}
+
+/* ===== CODE BLOCK ===== */
+.code-block{
+  background:rgba(0,0,0,.4);border:1px solid var(--border);
+  border-radius:14px;padding:24px 30px;margin:1.2rem 0;
+  font-family:var(--font-mono);font-size:.82rem;line-height:1.85;
+  color:var(--text2);overflow-x:auto;position:relative;
+}
+.code-block .kw{color:var(--purple)}
+.code-block .fn{color:var(--cyan)}
+.code-block .str{color:var(--amber)}
+.code-block .num{color:var(--emerald)}
+.code-block .cm{color:var(--text3)}
+.code-block .st{color:var(--rose)}
+.code-block .lang-tag{
+  position:absolute;top:0;right:0;padding:4px 14px;
+  font-size:.68rem;color:var(--text3);background:rgba(0,0,0,.3);
+  border-radius:0 12px 0 10px;
+}
+
+/* ===== STEP FLOW ===== */
+.step-flow{display:flex;gap:0;margin:1.5rem 0}
+.step-item{
+  flex:1;padding:26px 20px;border:1px solid var(--border);
+  border-radius:14px;margin-right:20px;background:var(--bg-card);
+  transition:all .35s;
+}
+.step-item:last-child{margin-right:0}
+.step-item:hover{transform:translateY(-4px);border-color:var(--cyan);box-shadow:var(--glow-cyan)}
+.step-num{
+  width:36px;height:36px;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;
+  background:rgba(0,200,255,.1);color:var(--cyan);
+  font-family:var(--font-mono);font-weight:700;font-size:.9rem;margin-bottom:14px;
+}
+.step-item h4{font-weight:600;font-size:1rem;margin-bottom:8px}
+.step-item p{font-size:.88rem;color:var(--text2);line-height:1.65}
+
+/* ===== PIPELINE BAR ===== */
+.pipeline-bar{
+  display:flex;align-items:center;justify-content:center;
+  gap:0;padding:24px 0;flex-wrap:wrap;
+}
+.pnode{display:flex;flex-direction:column;align-items:center;transition:all .35s}
+.pnode .pn-circle{
+  width:80px;height:80px;border-radius:50%;display:flex;
+  align-items:center;justify-content:center;
+  font-family:var(--font-display);font-size:1.4rem;font-weight:700;
+  border:2px solid rgba(255,255,255,.12);background:var(--bg-card);
+  transition:all .35s;cursor:default;
+}
+.pnode:hover .pn-circle{transform:scale(1.1)}
+.pnode .pn-label{margin-top:10px;font-size:.88rem;color:var(--text2);text-align:center}
+.pnode .pn-tech{font-size:.72rem;color:var(--text3);margin-top:3px}
+.parrow{padding:0 12px;display:flex;align-items:center}
+.parrow svg{width:40px;height:20px}
+.parrow line,.parrow polyline{stroke:rgba(255,255,255,.12);stroke-width:2;fill:none}
+/* pipe node colors */
+.pnode.m1 .pn-circle{border-color:rgba(75,140,246,.4);background:rgba(75,140,246,.06)}
+.pnode.m2 .pn-circle{border-color:rgba(155,108,255,.4);background:rgba(155,108,255,.06)}
+.pnode.m3 .pn-circle{border-color:rgba(0,200,255,.4);background:rgba(0,200,255,.06)}
+.pnode.m4 .pn-circle{border-color:rgba(245,166,35,.4);background:rgba(245,166,35,.06)}
+.pnode.m5 .pn-circle{border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.06)}
+.pnode.m6 .pn-circle{border-color:rgba(244,63,94,.4);background:rgba(244,63,94,.06)}
+.pnode.m1:hover .pn-circle{box-shadow:0 0 30px rgba(75,140,246,.25);border-color:rgba(75,140,246,.7)}
+.pnode.m2:hover .pn-circle{box-shadow:0 0 30px rgba(155,108,255,.25);border-color:rgba(155,108,255,.7)}
+.pnode.m3:hover .pn-circle{box-shadow:0 0 30px rgba(0,200,255,.25);border-color:rgba(0,200,255,.7)}
+.pnode.m4:hover .pn-circle{box-shadow:0 0 30px rgba(245,166,35,.25);border-color:rgba(245,166,35,.7)}
+.pnode.m5:hover .pn-circle{box-shadow:0 0 30px rgba(16,185,129,.25);border-color:rgba(16,185,129,.7)}
+.pnode.m6:hover .pn-circle{box-shadow:0 0 30px rgba(244,63,94,.25);border-color:rgba(244,63,94,.7)}
+
+/* ===== TABLE ===== */
+.comp-table{width:100%;border-collapse:collapse;margin:1.5rem 0;font-size:.95rem}
+.comp-table th{
+  text-align:left;padding:14px 20px;border-bottom:1px solid var(--border);
+  font-family:var(--font-mono);font-size:.78rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;
+}
+.comp-table td{padding:14px 20px;border-bottom:1px solid var(--border);color:var(--text2)}
+.comp-table tr:hover td{background:rgba(255,255,255,.02)}
+
+/* ===== HL BOX ===== */
+.hl-box{
+  padding:22px 30px;border-radius:14px;border-left:4px solid var(--cyan);
+  background:rgba(0,200,255,.04);margin:1.2rem 0;
+}
+.hl-box h4{font-family:var(--font-mono);font-size:.82rem;color:var(--cyan);margin-bottom:10px;letter-spacing:.04em}
+.hl-box p{font-size:.98rem;color:var(--text2);line-height:1.8}
+
+/* ===== TECH CHIPS ===== */
+.tech-row{display:flex;flex-wrap:wrap;gap:10px;margin:1rem 0}
+.tech-chip{
+  padding:6px 18px;border-radius:8px;border:1px solid var(--border);
+  background:var(--bg-card);font-family:var(--font-mono);font-size:.82rem;
+  color:var(--text2);transition:all .25s;
+}
+.tech-chip:hover{border-color:var(--cyan);color:var(--cyan)}
+
+/* ===== DATA FLOW BAR ===== */
+.dflow{
+  display:flex;align-items:center;gap:14px;padding:18px 24px;
+  border-radius:14px;background:var(--bg-card);border:1px solid var(--border);
+  margin:1.2rem 0;flex-wrap:wrap;font-family:var(--font-mono);font-size:.85rem;
+}
+.dflow .dnode{padding:10px 20px;border-radius:10px;background:rgba(0,0,0,.2);color:var(--text2)}
+.dflow .darr{color:var(--cyan);font-weight:700;font-size:1rem}
+
+/* ===== SUMMARY ===== */
+#slide-summary{text-align:center}
+.sum-flow{
+  display:flex;flex-direction:column;gap:10px;align-items:center;
+  margin:2rem 0;font-family:var(--font-mono);font-size:.95rem;color:var(--text2);
+}
+.sum-flow .sf-row{display:flex;align-items:center;gap:14px}
+.sum-flow .sf-node{padding:8px 22px;border-radius:10px;border:1px solid var(--border);background:var(--bg-card)}
+.sum-flow .sf-arrow{color:var(--cyan);font-weight:700;font-size:1rem}
+
+/* ===== BULLET LIST ===== */
+.bullet-list{list-style:none;margin:1rem 0}
+.bullet-list li{
+  font-size:.98rem;color:var(--text2);line-height:1.85;
+  padding:10px 0 10px 28px;position:relative;border-bottom:1px solid var(--border);
+}
+.bullet-list li:last-child{border-bottom:none}
+.bullet-list li::before{
+  content:'';position:absolute;left:4px;top:20px;
+  width:6px;height:6px;border-radius:50%;background:var(--cyan);
+}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:900px){
+  .slide-inner{padding:0 28px}
+  .feat-grid{grid-template-columns:1fr}
+  .step-flow{flex-direction:column;gap:14px}
+  .step-item{margin-right:0}
+  .sidebar-nav{right:6px;gap:8px;padding:14px 8px}
+  .nav-dot{width:8px;height:8px}
+  .pipeline-bar{flex-direction:column;gap:8px}
+  .parrow{transform:rotate(90deg)}
+  .io-box{flex-direction:column}
+}
+
+/* ===== ANIMATIONS ===== */
+.reveal{opacity:0;transform:translateY(20px);transition:opacity .65s cubic-bezier(.16,1,.3,1),transform .65s cubic-bezier(.16,1,.3,1)}
+.reveal.visible{opacity:1;transform:translateY(0)}
+.d1{transition-delay:.06s}.d2{transition-delay:.14s}.d3{transition-delay:.22s}.d4{transition-delay:.3s}.d5{transition-delay:.38s}
+</style>
+</head>
+<body>
+
+<div class="bg-grid"></div>
+<canvas id="bg-canvas"></canvas>
+
+<!-- ===== SIDEBAR ===== -->
+<nav class="sidebar-nav" id="sidebar">
+  <div class="nav-dot active" data-slide="0"><span class="tooltip">封面</span></div>
+  <div class="nav-dot" data-slide="1"><span class="tooltip">流水线总览</span></div>
+  <div class="nav-dot" data-slide="2"><span class="tooltip">M1 概览</span></div>
+  <div class="nav-dot" data-slide="3"><span class="tooltip">M1 FFmpeg</span></div>
+  <div class="nav-dot" data-slide="4"><span class="tooltip">M2 概览</span></div>
+  <div class="nav-dot" data-slide="5"><span class="tooltip">M2 显存策略</span></div>
+  <div class="nav-dot" data-slide="6"><span class="tooltip">M3 概览</span></div>
+  <div class="nav-dot" data-slide="7"><span class="tooltip">M3 四阶段流程</span></div>
+  <div class="nav-dot" data-slide="8"><span class="tooltip">M3 补丁体系</span></div>
+  <div class="nav-dot" data-slide="9"><span class="tooltip">M3 低显存策略</span></div>
+  <div class="nav-dot" data-slide="10"><span class="tooltip">M4 概览</span></div>
+  <div class="nav-dot" data-slide="11"><span class="tooltip">M4 Prompt</span></div>
+  <div class="nav-dot" data-slide="12"><span class="tooltip">M4 切片与容错</span></div>
+  <div class="nav-dot" data-slide="13"><span class="tooltip">M5 概览</span></div>
+  <div class="nav-dot" data-slide="14"><span class="tooltip">M5 算法详解</span></div>
+  <div class="nav-dot" data-slide="15"><span class="tooltip">M5 ASS 样式</span></div>
+  <div class="nav-dot" data-slide="16"><span class="tooltip">M6 概览</span></div>
+  <div class="nav-dot" data-slide="17"><span class="tooltip">M6 Prompt</span></div>
+  <div class="nav-dot" data-slide="18"><span class="tooltip">M6 切片与格式</span></div>
+  <div class="nav-dot" data-slide="19"><span class="tooltip">总结</span></div>
+</nav>
+
+<div class="kbd-hint">使用键盘 <kbd>↑</kbd><kbd>↓</kbd> 或 <kbd>←</kbd><kbd>→</kbd> 翻页</div>
+<div class="page-counter" id="page-counter">1 / 20</div>
+
+<!-- ============================== SLIDE 0: COVER ============================== -->
+<section class="slide" id="slide-cover" data-index="0">
+  <div class="slide-inner">
+    <div class="cover-badge reveal"><span class="dot"></span> Team Presentation · 模块化技术讲解 · 20 页</div>
+    <h1 class="cover-title reveal d1">
+      AI-SRT<br>
+      <span class="grad">日本語 → 中国語</span><br>字幕生成流水线
+    </h1>
+    <p class="cover-sub reveal d2">
+      全自动日语视频字幕生成与日译中翻译系统。
+      集成 WhisperX 语音识别、Demucs 人声分离、pyannote 说话人分割、
+      DeepSeek 大语言模型，六个模块独立封装，支持 Web / GUI / CLI 三入口。
+    </p>
+    <div class="cover-modules reveal d3">
+      <div class="cover-module m1">M1 解复用</div>
+      <div class="cover-module m2">M2 分离</div>
+      <div class="cover-module m3">M3 ASR</div>
+      <div class="cover-module m4">M4 规范化</div>
+      <div class="cover-module m5">M5 字幕</div>
+      <div class="cover-module m6">M6 翻译</div>
+    </div>
+    <div class="cover-hint reveal d4">
+      <span>向下滚动 或 使用键盘方向键浏览</span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 1: PIPELINE OVERVIEW ============================== -->
+<section class="slide" data-index="1">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Pipeline Overview</span>
+    <h1 class="slide-h1 reveal d1">M1 → M6 流水线全景</h1>
+    <p class="slide-desc reveal d2">
+      六个模块严格顺序执行。每个模块运行在独立 Conda 环境中，通过
+      <code style="font-family:var(--font-mono);color:var(--cyan);font-size:1.05rem">subprocess.Popen</code>
+      调用专属 Python 解释器。模块间通过 stderr 输出的
+      <code style="font-family:var(--font-mono);color:var(--cyan);font-size:1.05rem">PROGRESS: XX%</code>
+      行进行实时进度通信。
+    </p>
+
+    <div class="pipeline-bar reveal d3">
+      <div class="pnode m1"><div class="pn-circle">M1</div><div class="pn-label">音视频<br>解复用</div><div class="pn-tech">FFmpeg</div></div>
+      <div class="parrow"><svg viewBox="0 0 40 20"><line x1="0" y1="10" x2="30" y2="10"/><polyline points="24,4 38,10 24,16"/></svg></div>
+      <div class="pnode m2"><div class="pn-circle">M2</div><div class="pn-label">人声分离</div><div class="pn-tech">Demucs</div></div>
+      <div class="parrow"><svg viewBox="0 0 40 20"><line x1="0" y1="10" x2="30" y2="10"/><polyline points="24,4 38,10 24,16"/></svg></div>
+      <div class="pnode m3"><div class="pn-circle">M3</div><div class="pn-label">ASR 转写<br>与对齐</div><div class="pn-tech">WhisperX</div></div>
+      <div class="parrow"><svg viewBox="0 0 40 20"><line x1="0" y1="10" x2="30" y2="10"/><polyline points="24,4 38,10 24,16"/></svg></div>
+      <div class="pnode m4"><div class="pn-circle">M4</div><div class="pn-label">文本<br>规范化</div><div class="pn-tech">DeepSeek</div></div>
+      <div class="parrow"><svg viewBox="0 0 40 20"><line x1="0" y1="10" x2="30" y2="10"/><polyline points="24,4 38,10 24,16"/></svg></div>
+      <div class="pnode m5"><div class="pn-circle">M5</div><div class="pn-label">轴文重构</div><div class="pn-tech">Align</div></div>
+      <div class="parrow"><svg viewBox="0 0 40 20"><line x1="0" y1="10" x2="30" y2="10"/><polyline points="24,4 38,10 24,16"/></svg></div>
+      <div class="pnode m6"><div class="pn-circle">M6</div><div class="pn-label">日译中<br>翻译</div><div class="pn-tech">DeepSeek</div></div>
+    </div>
+
+    <div class="dflow reveal d4">
+      <span class="dnode">🎬 视频文件</span><span class="darr">→</span>
+      <span class="dnode">🔊 16kHz WAV</span><span class="darr">→</span>
+      <span class="dnode">🎤 纯人声</span><span class="darr">→</span>
+      <span class="dnode">📋 ASR JSON</span><span class="darr">→</span>
+      <span class="dnode">✨ 规范化 JSON</span><span class="darr">→</span>
+      <span class="dnode">📝 JP 字幕</span><span class="darr">→</span>
+      <span class="dnode">🇨🇳 CN 字幕</span>
+    </div>
+
+    <div class="comp-table reveal d5">
+      <table class="comp-table">
+        <tr><th>模块</th><th>环境名</th><th>核心依赖</th><th>关键输出</th></tr>
+        <tr><td>M1</td><td>mod1_demux</td><td>FFmpeg（零 Python 依赖）</td><td>16kHz Mono WAV</td></tr>
+        <tr><td>M2</td><td>mod2_separate</td><td>Demucs + PyTorch + TorchAudio</td><td>纯人声 WAV</td></tr>
+        <tr><td>M3</td><td>mod3_asr</td><td>WhisperX + pyannote + cuDNN</td><td>ASR JSON（词级 + speaker）</td></tr>
+        <tr><td>M4</td><td>mod4_normalize</td><td>DeepSeek API + OpenAI SDK</td><td>规范化 JSON（original_index）</td></tr>
+        <tr><td>M5</td><td>mod5_subtitle</td><td>纯 Python</td><td>ASS / SRT 字幕</td></tr>
+        <tr><td>M6</td><td>mod6_translate</td><td>DeepSeek API + OpenAI SDK</td><td>中文字幕（_cn 后缀）</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 2: M1 OVERVIEW ============================== -->
+<section class="slide" data-index="2">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 1</span>
+    <div class="module-header reveal d1">
+      <div class="module-num m1">M1</div>
+      <div class="module-header-info">
+        <h3>音视频解复用</h3>
+        <div class="filepath">Module1_demux/demux.py</div>
+        <div class="dep">依赖：FFmpeg · 零 Python 依赖 · Conda 环境 mod1_demux</div>
+      </div>
+    </div>
+
+    <div class="io-box reveal d2">
+      <div class="io-item in"><div class="io-label">Input</div><div class="io-val">🎬 MP4 / MKV / AVI / MOV / FLV</div></div>
+      <div class="io-arrow">→</div>
+      <div class="io-item out"><div class="io-label">Output</div><div class="io-val">🔊 WAV · 16kHz · Mono · PCM S16LE</div></div>
+    </div>
+
+    <div class="feat-grid reveal d3">
+      <div class="feat-card"><div class="feat-icon">⚙️</div><h4>FFmpeg 命令行调用</h4><p>完全依赖系统安装的 FFmpeg，无需任何 Python 音频库。通过 subprocess.Popen 启动进程并实时捕获 stderr。</p></div>
+      <div class="feat-card"><div class="feat-icon">📐</div><h4>标准化输出参数</h4><p>强制输出 16kHz / Mono / PCM S16LE 格式。保证下游 M2、M3 无需处理采样率兼容问题。</p></div>
+    </div>
+
+    <div class="tech-row reveal d4">
+      <span class="tech-chip">FFmpeg</span>
+      <span class="tech-chip">ffprobe</span>
+      <span class="tech-chip">subprocess.Popen</span>
+      <span class="tech-chip">stderr 实时解析</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 3: M1 FFmpeg & Progress ============================== -->
+<section class="slide" data-index="3">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 1 · 深入</span>
+    <h1 class="slide-h1 reveal d1">M1 FFmpeg 命令与进度机制</h1>
+
+    <div class="code-block reveal d2">
+      <span class="lang-tag">core FFmpeg 命令</span>
+      <span class="st">ffmpeg</span> -i <span class="str">input.mp4</span> \
+        <span class="st">-vn</span>                                    <span class="cm"># 丢弃视频流</span>
+        <span class="st">-acodec</span> <span class="str">pcm_s16le</span>                  <span class="cm"># 16-bit 有符号 PCM</span>
+        <span class="st">-ar</span> <span class="num">16000</span>                            <span class="cm"># 16kHz 采样率（下游统一要求）</span>
+        <span class="st">-ac</span> <span class="num">1</span>                               <span class="cm"># 单声道</span>
+        <span class="st">-y</span>                                     <span class="cm"># 覆盖已有文件</span>
+        <span class="str">output_16k.wav</span>
+    </div>
+
+    <div class="feat-grid reveal d3">
+      <div class="feat-card"><div class="feat-icon">📊</div><h4>实时进度提取</h4><p>用正则表达式 <code style="font-size:.88rem">time=(\d+:\d+:\d+\.\d+)</code> 从 stderr 中解析当前处理时间，除以总 duration 得到百分比。</p></div>
+      <div class="feat-card"><div class="feat-icon">⏱️</div><h4>总时长获取</h4><p>通过 ffprobe 在编码开始前获取视频总时长：<br><code style="font-size:.78rem">ffprobe -v error -show_entries format=duration</code>。</p></div>
+      <div class="feat-card"><div class="feat-icon">🎯</div><h4>三种进度模式</h4><p>终端动画（anim）→ 可解析行（line）→ 自动检测（auto）。通过 --progress-style 参数控制，适配 GUI 和 CLI 场景。</p></div>
+      <div class="feat-card"><div class="feat-icon">🛡️</div><h4>错误处理</h4><p>检查 FFmpeg 是否安装 → 检查返回码 → 输出文件是否存在 → 集合 stderr 内容报错，确保失败时有足够调试信息。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 4: M2 OVERVIEW ============================== -->
+<section class="slide" data-index="4">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 2</span>
+    <div class="module-header reveal d1">
+      <div class="module-num m2">M2</div>
+      <div class="module-header-info">
+        <h3>人声分离</h3>
+        <div class="filepath">Module2_separate/separate.py</div>
+        <div class="dep">依赖：Demucs (htdemucs) · PyTorch · TorchAudio · Conda 环境 mod2_separate</div>
+      </div>
+    </div>
+
+    <div class="io-box reveal d2">
+      <div class="io-item in"><div class="io-label">Input</div><div class="io-val">🔊 混合音频 WAV (16kHz Mono)</div></div>
+      <div class="io-arrow">→</div>
+      <div class="io-item out"><div class="io-label">Output</div><div class="io-val">🎤 纯净人声 WAV (16kHz Mono)</div></div>
+    </div>
+
+    <div class="feat-grid reveal d3">
+      <div class="feat-card"><div class="feat-icon">🧠</div><h4>htdemucs 模型</h4><p>Meta 开源的混合 Transformer 音源分离模型，将音频分离为 vocals / bass / drums / other 四轨，只提取人声轨。</p></div>
+      <div class="feat-card"><div class="feat-icon">📐</div><h4>采样率转换</h4><p>输入 16kHz → Demucs 内部 44100Hz 处理 → 输出 Resample 降回 16kHz。torchaudio.transforms.Resample 保证无损重采样。</p></div>
+      <div class="feat-card"><div class="feat-icon">⚡</div><h4>推理加速</h4><p>apply_model 使用 shifts=1 / split=True / overlap=0.25 平衡质量与速度；torch.no_grad() 避免梯度计算占用显存。</p></div>
+      <div class="feat-card"><div class="feat-icon">📦</div><h4>立体声兼容</h4><p>单声道输入自动 repeat 为 "伪立体声"（Demucs 要求双声道），输出 mean(dim=0) 合并回单声道。</p></div>
+    </div>
+
+    <div class="tech-row reveal d4">
+      <span class="tech-chip">Demucs</span>
+      <span class="tech-chip">htdemucs</span>
+      <span class="tech-chip">PyTorch</span>
+      <span class="tech-chip">TorchAudio</span>
+      <span class="tech-chip">soundfile</span>
+      <span class="tech-chip">CUDA</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 5: M2 VRAM STRATEGY ============================== -->
+<section class="slide" data-index="5">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 2 · 深入</span>
+    <h1 class="slide-h1 reveal d1">M2 显存自适应与分片策略</h1>
+    <p class="slide-desc reveal d2">
+      Demucs 模型在消费级 GPU 上处理长音频容易 OOM。M2 通过 GPU 显存检测自动决定分片策略。
+    </p>
+
+    <div class="feat-grid reveal d3">
+      <div class="feat-card"><div class="feat-icon">🔍</div><h4>GPU 显存检测</h4><p>调用 torch.cuda.get_device_properties(0).total_mem 获取总显存。备选方案：nvidia-smi（命令行查询）。</p></div>
+      <div class="feat-card"><div class="feat-icon">✂️</div><h4>低显存分片模式</h4><p>显存 &lt; 12GB 且音频长度 &gt; 8分钟时，按 CHUNK_SECONDS=480 秒切片。每段独立推理后 empty_cache() 释放显存。</p></div>
+      <div class="feat-card"><div class="feat-icon">🚀</div><h4>全速模式</h4><p>显存 ≥ 12GB 直接全量处理，模型一次加载不释放。避免分片拼接开销和边界伪影。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔄</div><h4>降采样输出</h4><p>Demucs 44100Hz 输出 → 用 torch.cat 拼接各片段 → Resample 降回 16000Hz → 写入 16-bit PCM WAV。</p></div>
+    </div>
+
+    <div class="code-block reveal d4">
+      <span class="lang-tag">separate.py · 分片核心逻辑</span>
+      <span class="kw">if</span> use_chunks:   <span class="cm"># device==cuda && vram&lt;12GB && audio&gt;8min</span>
+          n_chunks = (total_samples + chunk_samples - <span class="num">1</span>) <span class="cm">//</span> chunk_samples
+          <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(n_chunks):
+              start = i * chunk_samples
+              end = <span class="fn">min</span>(start + chunk_samples, total_samples)
+              seg = audio_tensor[:, start:end]
+              chunk_vocals = _process_single(seg, model, device, verbose)
+              vocals_chunks.<span class="fn">append</span>(chunk_vocals.cpu())
+              torch.cuda.<span class="fn">empty_cache</span>()    <span class="cm"># 每个分片后释放显存</span>
+          vocals_441 = torch.<span class="fn">cat</span>(vocals_chunks, dim=<span class="num">1</span>)
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 6: M3 OVERVIEW ============================== -->
+<section class="slide" data-index="6">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 3</span>
+    <div class="module-header reveal d1">
+      <div class="module-num m3">M3</div>
+      <div class="module-header-info">
+        <h3>ASR 转写、词级对齐与说话人分离</h3>
+        <div class="filepath">Module3_asr/transcribe_align.py</div>
+        <div class="dep">依赖：WhisperX · faster-whisper · ctranslate2 · pyannote · cuDNN 8.9 · 模型缓存 ~13GB</div>
+      </div>
+    </div>
+
+    <p class="slide-desc reveal d2">
+      M3 是流水线中最复杂的模块——用 1300+ 行代码完成语音转写、词级对齐、说话人分离三个独立任务，
+      并通过 7 层 monkey-patch 保证跨版本兼容。
+    </p>
+
+    <div class="io-box reveal d3">
+      <div class="io-item in"><div class="io-label">Input</div><div class="io-val">🎤 纯净人声 WAV (16kHz)</div></div>
+      <div class="io-arrow">→</div>
+      <div class="io-item out"><div class="io-label">Output</div><div class="io-val">📋 ASR JSON [segments: start, end, text, speaker, words]</div></div>
+    </div>
+
+    <div class="tech-row reveal d4">
+      <span class="tech-chip">WhisperX 3.1.1</span>
+      <span class="tech-chip">faster-whisper large-v2 (CT2)</span>
+      <span class="tech-chip">ctranslate2 ≥4.0</span>
+      <span class="tech-chip">Wav2Vec2 日语对齐</span>
+      <span class="tech-chip">pyannote seg-3.0 + diar-3.1</span>
+      <span class="tech-chip">ECAPA-TDNN / WeSpeaker</span>
+      <span class="tech-chip">CUDA + cuDNN 8.9</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 7: M3 FOUR STAGES ============================== -->
+<section class="slide" data-index="7">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 3 · 核心流程</span>
+    <h1 class="slide-h1 reveal d1">M3 四阶段处理详解</h1>
+    <p class="slide-desc reveal d2">M3 的核心函数 <code style="font-size:1.1rem">transcribe_and_align()</code> 内部分为四个严格顺序的阶段。</p>
+
+    <div class="step-flow reveal d3">
+      <div class="step-item">
+        <div class="step-num">1</div>
+        <h4>语音转写 (ASR)</h4>
+        <p>加载 faster-whisper large-v2 的 CTranslate2 格式模型（int8 量化）。调用 model.transcribe(audio, batch_size=16) 输出段落级时间戳和文本。</p>
+      </div>
+      <div class="step-item">
+        <div class="step-num">2</div>
+        <h4>词级对齐 (Alignment)</h4>
+        <p>加载 Wav2Vec2 (xlsr-53-japanese) 日语专精模型。使用 whisperx.align() 将每个词与音频波形强制对齐，分配独立时间戳。</p>
+      </div>
+      <div class="step-item">
+        <div class="step-num">3</div>
+        <h4>说话人分离 (Diarization)</h4>
+        <p>使用 pyannote 的 segmentation-3.0 + speaker-diarization-3.1 pipeline，配合 ECAPA-TDNN / WeSpeaker embedding 模型进行多说话人聚类。</p>
+      </div>
+      <div class="step-item">
+        <div class="step-num">4</div>
+        <h4>说话人分配 (Assign)</h4>
+        <p>调用 whisperx.assign_word_speakers() 将 diarization 结果分配到对齐后的每个词上。最终每个 word 和 segment 都带 speaker 标签。</p>
+      </div>
+    </div>
+
+    <p class="slide-desc reveal d4" style="margin-top:1.5rem">
+      模型推理全部在 GPU 上完成。低显存模式下，每个阶段结束后显式调用 <code style="background:rgba(0,200,255,.08);padding:2px 8px;border-radius:4px">del model; torch.cuda.empty_cache()</code> 释放资源。
+    </p>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 8: M3 MONKEY PATCHES ============================== -->
+<section class="slide" data-index="8">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 3 · 工程适配</span>
+    <h1 class="slide-h1 reveal d1">M3 七层兼容性补丁</h1>
+    <p class="slide-desc reveal d2">
+      由于 WhisperX / faster-whisper / PyTorch 生态版本迭代频繁，M3 在 import 阶段自动应用 7 个 monkey-patch。
+    </p>
+
+    <div class="feat-grid reveal d3">
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>faster-whisper API 适配</h4><p>TranscriptionOptions 旧版缺少 max_new_tokens/clip_timestamps 参数，patch 后自动补默认值。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>PyTorch 2.6+ 安全加载</h4><p>lightning_fabric._load 和 torch.load 全局添加 weights_only=False，兼容旧模型 checkpoint。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>SpeechBrain 循环导入防护</h4><p>LazyModule.ensure_module 增加 _pending 集合检测，防止递归导入时无限重试导致挂死。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>离线模型优先</h4><p>huggingface_hub.hf_hub_download 强制 local_files_only=True，失败时在 snapshots/ 中手动搜索 candidate 文件。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>VAD 降级兜底</h4><p>pyannote VAD 模型未缓存时自动降级为全 1 输出的虚拟 VAD（_DummyVAD），允许 pipeline 继续运行。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>Windows DLL 支持</h4><p>自动 os.add_dll_directory(libs/) 使 cuDNN 8.9 的 7 个 DLL 可被 Python 加载器发现。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>本地路径识别</h4><p>补丁 faster_whisper.utils.download_model，使 SDK 识别本地 snapshot 目录而不是把它当成 repo_id 发起网络请求。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>Align 模型本地注入</h4><p>替换 DEFAULT_ALIGN_MODELS_HF[ja] 为本地缓存路径，绕过在线下载。完成后恢复原始值。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 9: M3 LOW VRAM ============================== -->
+<section class="slide" data-index="9">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 3 · 性能工程</span>
+    <h1 class="slide-h1 reveal d1">M3 低显存串行加载策略</h1>
+    <p class="slide-desc reveal d2">
+      三个 AI 模型（ASR + 对齐 + 说话人）如果同时驻留 GPU 需要 ~16GB 显存。
+      M3 通过显存检测自动切换串行加载模式，让 8GB 消费级显卡也能完成整套流程。
+    </p>
+
+    <div class="hl-box reveal d3">
+      <h4>💾 串行化流程（显存 &lt; 12GB 时启动）</h4>
+      <p>
+        加载 ASR 模型 → 转写 → <strong>del model; torch.cuda.empty_cache()</strong> →
+        加载对齐模型 → 对齐 → <strong>del model_a; torch.cuda.empty_cache()</strong> →
+        加载说话人模型 → 分离 + 分配 → <strong>del diarize_model; torch.cuda.empty_cache()</strong>
+      </p>
+    </div>
+
+    <div class="feat-grid reveal d4">
+      <div class="feat-card"><div class="feat-icon">📏</div><h4>显存阈值</h4><p>VRAM_LOW_THRESHOLD_GB = 12。低于此值启动串行模式，否则全驻留。RTX 3060/4060 (6-8GB) 自动走串行。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔬</div><h4>计算精度</h4><p>GPU 默认 float16，CPU 默认 int8。可通过 --compute-type 参数覆盖。int8 量化牺牲少量精度换取更低显存。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 10: M4 OVERVIEW ============================== -->
+<section class="slide" data-index="10">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 4</span>
+    <div class="module-header reveal d1">
+      <div class="module-num m4">M4</div>
+      <div class="module-header-info">
+        <h3>文本规范化</h3>
+        <div class="filepath">Module4_normalize/normalize_text.py</div>
+        <div class="dep">依赖：DeepSeek API (deepseek-v4-flash) · OpenAI SDK · Conda 环境 mod4_normalize</div>
+      </div>
+    </div>
+
+    <div class="io-box reveal d2">
+      <div class="io-item in"><div class="io-label">Input</div><div class="io-val">📋 ASR JSON (M3 原始输出)</div></div>
+      <div class="io-arrow">→</div>
+      <div class="io-item out"><div class="io-label">Output</div><div class="io-val">✨ 规范化 JSON（含 original_index）</div></div>
+    </div>
+
+    <div class="feat-grid reveal d3">
+      <div class="feat-card"><div class="feat-icon">🎨</div><h4>retain 风格（默认）</h4><p>专为娱乐直播设计：保留语气词、拟声词（えええ/あはは）、角色口癖（だお/にゃ）、网络梗。仅删除纯无意义填充词。</p></div>
+      <div class="feat-card"><div class="feat-icon">📋</div><h4>clean 风格</h4><p>强规范化：假名 → 汉字（けっこう→結構）、删除所有填充词、自动断句超过 30 字符的片段。适合正式场合。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔗</div><h4>original_index 追踪</h4><p>每个输出片段携带 original_index 整数（从 0 开始），记录对应 M3 原始片段的索引。是 M5 轴文重建的关键桥梁。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔀</div><h4>允许拆段与合段</h4><p>M4 可以按语义将长片段拆为多个短片段（original_index 不变），M5 按文本比例分配时间。输出片段数可 != 输入片段数。</p></div>
+    </div>
+
+    <div class="tech-row reveal d4">
+      <span class="tech-chip">DeepSeek API</span>
+      <span class="tech-chip">deepseek-v4-flash</span>
+      <span class="tech-chip">OpenAI SDK</span>
+      <span class="tech-chip">temperature=0.0</span>
+      <span class="tech-chip">max_tokens=8000</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 11: M4 PROMPT ============================== -->
+<section class="slide" data-index="11">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 4 · Prompt 工程</span>
+    <h1 class="slide-h1 reveal d1">M4 Prompt 设计</h1>
+    <p class="slide-desc reveal d2">M4 通过精心设计的 System Prompt 引导 DeepSeek 完成日语文本后处理。</p>
+
+    <div class="code-block reveal d3">
+      <span class="lang-tag">retain 风格核心规则（节选）</span>
+      <span class="kw">你是一个专为</span><span class="str">多人娱乐直播录像</span><span class="kw">设计的日语文本后处理引擎。</span>
+
+      <span class="num">1.</span> <span class="str">保留语气与拟声词</span><span class="kw">不删除情感词，不合并有意的重复</span>
+      <span class="num">2.</span> <span class="str">网络梗与口癖</span><span class="kw">保留角色用语（○○だお、～にゃ、草、ワロタ）</span>
+      <span class="num">3.</span> <span class="str">假名转汉字</span><span class="kw">仅在影响理解时转换，保留日常口语假名习惯</span>
+      <span class="num">4.</span> <span class="str">最小化清洗</span><span class="kw">仅删除纯赘字（えーと、あのー），保留表达情绪重复</span>
+      <span class="num">5.</span> <span class="str">自然断句</span><span class="kw">建议每句不超过 40 字符，不割裂情感爆发</span>
+      <span class="num">6.</span> <span class="str">输出格式</span><span class="kw">JSON 数组，每元素含 start/end/text/speaker/original_index/words</span>
+    </div>
+
+    <div class="feat-grid reveal d4">
+      <div class="feat-card"><div class="feat-icon">📊</div><h4>输入格式化</h4><p>将 segments 渲染为 <code style="font-size:.85rem">index: [SPEAKER_XX] text</code> 的行格式，每行一个片段，便于 LLM 按序号处理。</p></div>
+      <div class="feat-card"><div class="feat-icon">🎯</div><h4>确定性输出</h4><p>temperature=0.0 + thinking disabled + System 只输出 JSON，三重保证输出格式稳定。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 12: M4 CHUNKING & ERRORS ============================== -->
+<section class="slide" data-index="12">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 4 · 工程实现</span>
+    <h1 class="slide-h1 reveal d1">M4 切片调用与容错机制</h1>
+
+    <div class="feat-grid reveal d2">
+      <div class="feat-card"><div class="feat-icon">✂️</div><h4>切片 API 调用</h4><p>当 segments 超过 max_segments_per_chunk（默认 50）时，按固定大小切片分批调用 DeepSeek。每片处理完成后自动修正 original_index 偏移（+= chunk_start）。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔄</div><h4>指数退避重试</h4><p>API 调用最多重试 3 次。第 1 次等 2s、第 2 次等 4s、第 3 次等 8s。所有超时和瞬时错误均触发重试。</p></div>
+      <div class="feat-card"><div class="feat-icon">🛡️</div><h4>JSON 解析容错</h4><p>1. 移除 markdown 代码块标记。2. json.loads 标准解析。3. 失败时用正则 \[.*\] 提取数组并重试。4. 仍失败抛出含错误上下文异常。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔑</div><h4>API 密钥预检</h4><p>启动时校验 DEEPSEEK_API_KEY 是否合法（检查非占位值 + 含 sk- 前缀），提前明确报错而非等待 API 超时。</p></div>
+    </div>
+
+    <div class="hl-box reveal d3">
+      <h4>模型参数</h4>
+      <p>模型：<strong>deepseek-v4-flash</strong> · temperature=<strong>0.0</strong>（后处理需要确定性）· API_TIMEOUT=<strong>180s</strong> · extra_body={"thinking":{"type":"disabled"}}</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 13: M5 OVERVIEW ============================== -->
+<section class="slide" data-index="13">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 5</span>
+    <div class="module-header reveal d1">
+      <div class="module-num m5">M5</div>
+      <div class="module-header-info">
+        <h3>轴文重构与字幕生成</h3>
+        <div class="filepath">Module5_subtitle/rebuild_subtitle.py</div>
+        <div class="dep">依赖：纯 Python（零外部依赖）· Conda 环境 mod5_subtitle</div>
+      </div>
+    </div>
+
+    <div class="io-box reveal d2">
+      <div class="io-item in"><div class="io-label">Input (双源)</div><div class="io-val">M3 原始 JSON（精确时间轴）+ M4 规范化 JSON（清洗文本）</div></div>
+      <div class="io-arrow">→</div>
+      <div class="io-item out"><div class="io-label">Output</div><div class="io-val">📝 ASS 或 SRT 字幕文件</div></div>
+    </div>
+
+    <p class="slide-desc reveal d3">
+      M5 的核心挑战：M4 可能修改了文本长度甚至拆分了片段，如何让清洗后的文本仍然匹配 M3 的精确时间轴？
+      答案是 <strong>original_index 索引映射</strong>。
+    </p>
+
+    <div class="feat-grid reveal d4">
+      <div class="feat-card"><div class="feat-icon">🔗</div><h4>索引映射模式</h4><p>当 M4 数据含 original_index 时启用。按索引分组后按文本长度比例分配原始时间段，保证对齐精确。</p></div>
+      <div class="feat-card"><div class="feat-icon">⚠️</div><h4>顺序匹配退化</h4><p>当 M4 数据不含 original_index 时退化为一对一顺序匹配。打印警告提示，仍然产出可用的字幕文件。</p></div>
+      <div class="feat-card"><div class="feat-icon">✂️</div><h4>短片段过滤</h4><p>时长小于 min_duration（默认 0.5s）的片段自动剔除，避免字幕闪烁影响观感。</p></div>
+      <div class="feat-card"><div class="feat-icon">🗣️</div><h4>说话人名称映射</h4><p>支持通过 --speaker-names 参数将 SPEAKER_00 等标签映射为真实人名（如 "SPEAKER_00:Alice"）。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 14: M5 ALGORITHM ============================== -->
+<section class="slide" data-index="14">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 5 · 核心算法</span>
+    <h1 class="slide-h1 reveal d1">M5 align_and_rebuild 详解</h1>
+
+    <div class="step-flow reveal d2">
+      <div class="step-item"><div class="step-num">1</div><h4>检测模式</h4><p>检查 cleaned_data 所有片段是否都含 original_index。全有 → 索引映射模式；否则 → 顺序匹配退化。</p></div>
+      <div class="step-item"><div class="step-num">2</div><h4>索引分组</h4><p>用 defaultdict(list) 按 original_index 分组。每组内的所有片段对应 M3 中的一个原始时间段。</p></div>
+      <div class="step-item"><div class="step-num">3</div><h4>比例分配</h4><p>计算组内各片段 text_len / total_text_len 的比例。片段起始 = start + cum_ratio*duration，长度 = ratio*duration。</p></div>
+      <div class="step-item"><div class="step-num">4</div><h4>过滤与输出</h4><p>过滤短于 0.5s 片段 → 替换说话人名 → 生成 ASS/SRT 文本 → 写入文件。</p></div>
+    </div>
+
+    <div class="code-block reveal d3">
+      <span class="lang-tag">rebuild_subtitle.py · 时间比例分配核心</span>
+      <span class="kw">for</span> orig_idx, grp <span class="kw">in</span> groups.<span class="fn">items</span>():
+          raw_seg = raw_data[orig_idx]
+          start, end = raw_seg[<span class="str">"start"</span>], raw_seg[<span class="str">"end"</span>]
+          duration = end - start
+          total_text_len = <span class="fn">sum</span>(<span class="fn">len</span>(s[<span class="str">"text"</span>]) <span class="kw">for</span> s <span class="kw">in</span> grp)
+          cum_ratio = <span class="num">0</span>
+          <span class="kw">for</span> seg <span class="kw">in</span> grp:
+              ratio = <span class="fn">len</span>(seg[<span class="str">"text"</span>]) / total_text_len
+              seg_start = start + cum_ratio * duration
+              seg_end = seg_start + ratio * duration
+              seg_start = <span class="fn">max</span>(start, <span class="fn">min</span>(seg_start, end))  <span class="cm"># 防溢出</span>
+              subtitle_entries.<span class="fn">append</span>({...})
+              cum_ratio += ratio
+    </div>
+
+    <p class="slide-desc reveal d4" style="margin-top:1rem">
+      这种按文本长度比例分配时间的方法，确保 M4 拆分后的短句不会错位或越界，始终在原段时间区间内。
+    </p>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 15: M5 ASS STYLE ============================== -->
+<section class="slide" data-index="15">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 5 · 输出细节</span>
+    <h1 class="slide-h1 reveal d1">M5 ASS 样式系统与 SRT/ASS 双格式</h1>
+
+    <div class="feat-grid reveal d2">
+      <div class="feat-card"><div class="feat-icon">🎨</div><h4>8 色说话人样式表</h4><p>预定义 8 种颜色：绿色 SPEAKER_00、红色 SPEAKER_01、蓝色 SPEAKER_02、黄色 SPEAKER_03、紫色 SPEAKER_04、青色 SPEAKER_05、橙色 SPEAKER_06、蓝紫 SPEAKER_07。动态生成 ASS 头部。</p></div>
+      <div class="feat-card"><div class="feat-icon">📝</div><h4>SRT 格式</h4><p>时间戳格式 HH:MM:SS,ms → HH:MM:SS,ms。说话人标签以 [SPEAKER_XX] 前缀形式嵌入文本行。</p></div>
+      <div class="feat-card"><div class="feat-icon">📄</div><h4>ASS 格式</h4><p>时间戳格式 H:MM:SS.cs（厘秒）。样式名映射到对应的彩色 Style 行。说话人名以 "Name: Text" 形式嵌入 Dialogue 行。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔧</div><h4>可配置参数</h4><p>通过 --format 选 ass/srt、--min-duration 控制最小片段时长、--speaker-names 进行说话人名称替换。</p></div>
+    </div>
+
+    <div class="comp-table reveal d3">
+      <table class="comp-table">
+        <tr><th>格式</th><th>时间戳精度</th><th>多说话人方案</th><th>推荐场景</th></tr>
+        <tr><td>SRT</td><td>毫秒</td><td>文本前缀 [SPEAKER_00]</td><td>通用播放器兼容性</td></tr>
+        <tr><td>ASS (默认)</td><td>厘秒</td><td>彩色 Style 渲染</td><td>高级播放器 / 多说话人视频</td></tr>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 16: M6 OVERVIEW ============================== -->
+<section class="slide" data-index="16">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 6</span>
+    <div class="module-header reveal d1">
+      <div class="module-num m6">M6</div>
+      <div class="module-header-info">
+        <h3>日译中字幕翻译</h3>
+        <div class="filepath">Module6_translate/translate_subtitle.py</div>
+        <div class="dep">依赖：DeepSeek API (deepseek-v4-flash) · OpenAI SDK · Conda 环境 mod6_translate</div>
+      </div>
+    </div>
+
+    <div class="io-box reveal d2">
+      <div class="io-item in"><div class="io-label">Input</div><div class="io-val">📝 日文 ASS/SRT 字幕 (M5 输出)</div></div>
+      <div class="io-arrow">→</div>
+      <div class="io-item out"><div class="io-label">Output</div><div class="io-val">🇨🇳 中文 ASS/SRT 字幕 (文件名 _cn 后缀)</div></div>
+    </div>
+
+    <div class="feat-grid reveal d3">
+      <div class="feat-card"><div class="feat-icon">🎨</div><h4>creative 风格（默认）</h4><p>本地化专家模式：保留口语化、网络用语、情感强度、角色口癖。如 "草" 译为 "笑死"、"ワロタ" 译为 "哈哈"。</p></div>
+      <div class="feat-card"><div class="feat-icon">📖</div><h4>literal 风格</h4><p>逐句直译，保持原文结构。适应需要精确对照原文的场景。</p></div>
+      <div class="feat-card"><div class="feat-icon">📋</div><h4>格式自动检测</h4><p>根据输入文件扩展名自动判断 .srt / .ass 格式。拥有独立的 SRT 解析/保存和 ASS 解析/保存逻辑。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔄</div><h4>时间戳保持</h4><p>翻译过程只替换文本内容，原始 start/end 时间戳和 ASS 样式表头部完整保留不修改。</p></div>
+    </div>
+
+    <div class="tech-row reveal d4">
+      <span class="tech-chip">DeepSeek API</span>
+      <span class="tech-chip">deepseek-v4-flash</span>
+      <span class="tech-chip">OpenAI SDK</span>
+      <span class="tech-chip">temperature=0.4</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 17: M6 PROMPT ============================== -->
+<section class="slide" data-index="17">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 6 · Prompt 工程</span>
+    <h1 class="slide-h1 reveal d1">M6 creative 翻译 Prompt</h1>
+    <p class="slide-desc reveal d2">M6 的 Prompt 让 LLM 理解字幕翻译的特殊约束——简洁、口语化、保留情感、适配滚动速度。</p>
+
+    <div class="code-block reveal d3">
+      <span class="lang-tag">translate_subtitle.py · creative 风格 System Prompt</span>
+      <span class="kw">你是一个精通中日文的本地化专家，专为多人娱乐直播录像翻译字幕。</span>
+      <span class="kw">请将以下日语字幕翻译为中文，务必：</span>
+
+      <span class="num">1.</span> <span class="str">信达雅</span><span class="kw">：准确传达原意，双关/梗/语气词用最贴切的中文网络用语或口语</span>
+      <span class="num">2.</span> <span class="str">保留风格</span><span class="kw">：保留原文情感强度与语气（震惊、吐槽、卖萌），不得平淡化</span>
+      <span class="num">3.</span> <span class="str">适配字幕</span><span class="kw">：每段译文尽量简洁，适合字幕滚动速度</span>
+      <span class="num">4.</span> <span class="str">不翻译口癖</span><span class="kw">：角色专属用语可保留或创造对应中文梗（如「にゃんぱすー」）</span>
+      <span class="num">5.</span> <span class="str">输出格式</span><span class="kw">：必须返回 JSON 数组，每元素含 text 字段，与输入序号一一对应</span>
+    </div>
+
+    <div class="hl-box reveal d4">
+      <h4>模型参数</h4>
+      <p>模型：<strong>deepseek-v4-flash</strong> · temperature=<strong>0.4</strong>（翻译需要适度创意）· max_tokens=<strong>8000</strong> · thinking disabled · API_TIMEOUT=180s</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 18: M6 CHUNKING & FORMAT ============================== -->
+<section class="slide" data-index="18">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Module 6 · 工程实现</span>
+    <h1 class="slide-h1 reveal d1">M6 切片翻译与容错设计</h1>
+
+    <div class="feat-grid reveal d2">
+      <div class="feat-card"><div class="feat-icon">✂️</div><h4>切片翻译防注意力漂移</h4><p>当条目数超过 max_lines_per_chunk（默认 20）时，自动分片独立调用 API。每片独立 prompt + 独立响应解析，避免 LLM 长文本注意力分散导致漏翻或合并。</p></div>
+      <div class="feat-card"><div class="feat-icon">🛡️</div><h4>四层 JSON 容错</h4><p>1. 移除 markdown 代码块。2. json.loads 解析。3. 失败时正则 \[.*\] 提取。4. 仍失败抛出错误，包含前 200 字符原文供排查。</p></div>
+      <div class="feat-card"><div class="feat-icon">🔢</div><h4>严格条目数校验</h4><p>翻译结果数量必须与原文数量严格一致。不一致时抛出详细错误，包含前 300 字符原始响应，便于排查 LLM 合并遗漏问题。</p></div>
+      <div class="feat-card"><div class="feat-icon">📄</div><h4>双格式解析与重写</h4><p>SRT：用正则 \n\n 分块 → 按序号提取文本。ASS：按行检测 "Dialogue:" 前缀 → 解析逗号分隔字段。翻译后保留原时间戳和样式信息。</p></div>
+    </div>
+
+    <div class="code-block reveal d3">
+      <span class="lang-tag">指数退避重试逻辑</span>
+      <span class="kw">for</span> attempt <span class="kw">in</span> <span class="fn">range</span>(<span class="num">1</span>, API_MAX_RETRIES + <span class="num">1</span>):
+          <span class="kw">try</span>:
+              resp = client.chat.completions.<span class="fn">create</span>(...)
+              <span class="kw">return</span> resp.choices[<span class="num">0</span>].message.content
+          <span class="kw">except</span> <span class="kw">Exception</span> <span class="kw">as</span> e:
+              <span class="kw">if</span> attempt < API_MAX_RETRIES:
+                  wait = <span class="num">2</span> ** attempt    <span class="cm"># 2s, 4s, 8s</span>
+                  time.<span class="fn">sleep</span>(wait)
+              <span class="kw">else</span>:
+                  <span class="kw">raise</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== SLIDE 19: SUMMARY ============================== -->
+<section class="slide" id="slide-summary" data-index="19">
+  <div class="slide-inner">
+    <span class="slide-tag reveal">Summary</span>
+    <h1 class="slide-h1 reveal d1">总结与回顾</h1>
+
+    <div class="sum-flow reveal d2">
+      <div class="sf-row">
+        <span class="sf-node" style="color:var(--blue)">M1 FFmpeg 解复用</span>
+        <span class="sf-arrow">→</span>
+        <span class="sf-node" style="color:var(--purple)">M2 Demucs 分离</span>
+        <span class="sf-arrow">→</span>
+        <span class="sf-node" style="color:var(--cyan)">M3 WhisperX ASR</span>
+        <span class="sf-arrow">→</span>
+        <span class="sf-node" style="color:var(--amber)">M4 LLM 规范化</span>
+        <span class="sf-arrow">→</span>
+        <span class="sf-node" style="color:var(--emerald)">M5 轴文重建</span>
+        <span class="sf-arrow">→</span>
+        <span class="sf-node" style="color:var(--rose)">M6 LLM 翻译</span>
+      </div>
+    </div>
+
+    <div class="feat-grid reveal d3">
+      <div class="feat-card"><div class="feat-icon">🐍</div><h4>6 个 Conda 环境</h4><p>mod1_demux → mod6_translate，依赖完全隔离。subprocess.Popen 调用各自 python.exe，通过 stderr 输出 PROGRESS 行通信。</p></div>
+      <div class="feat-card"><div class="feat-icon">🌐</div><h4>三入口运行</h4><p>Web（Flask + SSE 实时进度）· GUI（tkinter）· CLI（命令行参数）。满足不同场景需求。</p></div>
+      <div class="feat-card"><div class="feat-icon">🤖</div><h4>4 个 AI 模型</h4><p>WhisperX 转写 · Demucs 分离 · pyannote 说话人 · DeepSeek 清洗+翻译。约 13GB 离线缓存，支持国内 HF 镜像。</p></div>
+      <div class="feat-card"><div class="feat-icon">🛡️</div><h4>生产级容错</h4><p>API 指数退避重试 · JSON 正则回退 · VAD 降级 · 7 层兼容性补丁 · 显存自适应 · cuDNN 自动补齐。</p></div>
+    </div>
+
+    <div class="cover-tags reveal d4" style="justify-content:center;margin-top:2rem">
+      <span class="cover-tag" style="font-size:.92rem">Python 3.10</span>
+      <span class="cover-tag" style="font-size:.92rem">WhisperX</span>
+      <span class="cover-tag" style="font-size:.92rem">faster-whisper</span>
+      <span class="cover-tag" style="font-size:.92rem">Demucs</span>
+      <span class="cover-tag" style="font-size:.92rem">pyannote</span>
+      <span class="cover-tag" style="font-size:.92rem">DeepSeek</span>
+      <span class="cover-tag" style="font-size:.92rem">Flask</span>
+      <span class="cover-tag" style="font-size:.92rem">FFmpeg</span>
+      <span class="cover-tag" style="font-size:.92rem">Conda</span>
+      <span class="cover-tag" style="font-size:.92rem">CUDA</span>
+    </div>
+
+    <p class="slide-desc reveal d5" style="text-align:center;margin:2rem auto 0;font-size:1.3rem">
+      日语视频 → 音频提取 → 人声分离 → 语音识别 → 文本清洗 → 字幕生成 → 日译中 → <strong style="color:var(--cyan)">精准中文字幕</strong>
+    </p>
+  </div>
+</section>
+
+<script>
+(function(){
+/* ===== PARTICLES ===== */
+const cv=document.getElementById('bg-canvas');
+const ct=cv.getContext('2d');
+let ps=[],af;
+function rc(){cv.width=innerWidth;cv.height=innerHeight}
+rc();addEventListener('resize',()=>{rc();ip()});
+function ip(){
+  ps=[];const n=Math.min(50,Math.floor(cv.width*cv.height/20000));
+  for(let i=0;i<n;i++)ps.push({x:Math.random()*cv.width,y:Math.random()*cv.height,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,s:Math.random()*1.3+.4,o:Math.random()*.4+.08});
+}
+function dp(){
+  ct.clearRect(0,0,cv.width,cv.height);
+  ps.forEach((p,i)=>{
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0)p.x=cv.width;if(p.x>cv.width)p.x=0;if(p.y<0)p.y=cv.height;if(p.y>cv.height)p.y=0;
+    ct.beginPath();ct.arc(p.x,p.y,p.s,0,Math.PI*2);ct.fillStyle='rgba(0,200,255,'+p.o+')';ct.fill();
+    for(let j=i+1;j<ps.length;j++){const dx=p.x-ps[j].x,dy=p.y-ps[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<100){ct.beginPath();ct.moveTo(p.x,p.y);ct.lineTo(ps[j].x,ps[j].y);ct.strokeStyle='rgba(0,200,255,'+(.05*(1-d/100))+')';ct.lineWidth=.4;ct.stroke()}}
+  });
+  af=requestAnimationFrame(dp);
+}
+ip();dp();
+
+/* ===== SCROLL REVEAL ===== */
+const ro=new IntersectionObserver((es)=>{
+  es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')});
+},{threshold:.1,rootMargin:'0px 0px -30px 0px'});
+document.querySelectorAll('.reveal').forEach(el=>ro.observe(el));
+
+/* ===== SLIDE NAVIGATION ===== */
+const slides=document.querySelectorAll('.slide');
+const dots=document.querySelectorAll('.nav-dot');
+const counter=document.getElementById('page-counter');
+let currentIdx=0;
+const totalSlides=slides.length;
+
+function updateNav(idx){
+  currentIdx=idx;
+  dots.forEach((d,i)=>{d.classList.toggle('active',i===idx)});
+  counter.textContent=(idx+1)+' / '+totalSlides;
+}
+
+function scrollToSlide(idx){
+  if(idx<0||idx>=totalSlides)return;
+  slides[idx].scrollIntoView({behavior:'smooth',block:'center'});
+}
+
+const sio=new IntersectionObserver((es)=>{
+  es.forEach(e=>{
+    if(e.isIntersecting){
+      updateNav(parseInt(e.target.dataset.index));
+    }
+  });
+},{threshold:.35});
+slides.forEach(s=>sio.observe(s));
+
+dots.forEach((d,i)=>{d.addEventListener('click',()=>scrollToSlide(i))});
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'||e.key==='ArrowRight'){e.preventDefault();scrollToSlide(currentIdx+1)}
+  if(e.key==='ArrowUp'||e.key==='ArrowLeft'){e.preventDefault();scrollToSlide(currentIdx-1)}
+  if(e.key==='Home'){e.preventDefault();scrollToSlide(0)}
+  if(e.key==='End'){e.preventDefault();scrollToSlide(totalSlides-1)}
+});
+
+let touchStartY=0;
+document.addEventListener('touchstart',e=>{touchStartY=e.touches[0].clientY});
+document.addEventListener('touchend',e=>{
+  const dy=touchStartY-e.changedTouches[0].clientY;
+  if(Math.abs(dy)>50){if(dy>0)scrollToSlide(currentIdx+1);else scrollToSlide(currentIdx-1)}
+});
+
+})();
+</script>
+</body>
+</html>

@@ -121,6 +121,11 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/presentation")
+def presentation():
+    return render_template("presentation.html")
+
+
 @app.route("/api/videos")
 def list_videos():
     video_exts = (".mp4", ".mkv", ".avi", ".mov", ".flv")

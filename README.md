@@ -225,27 +225,92 @@ python pipeline.py video.mp4
 
 #### Web 前端模式
 
-启动 Web 服务器，通过浏览器远程操作流水线：
+Web 前端通过 Flask + SSE（Server-Sent Events）提供可视化操作界面，支持拖拽上传、实时进度监控、参数配置和字幕下载。所有后端逻辑复用 `PipelineRunner`，与 CLI/GUI 模式完全一致。
+
+##### 前置条件
+
+Web 服务器依赖流水线主环境的 pip 包。如果还未安装：
 
 ```bash
-# 安装 Flask 依赖
-pip install flask
-
-# 启动 Web 服务器（默认 http://127.0.0.1:5000）
-python web_server.py
-
-# 自定义端口和地址
-python web_server.py --port 8080 --host 0.0.0.0
+pip install -r requirements_pipeline.txt
 ```
 
-浏览器打开后提供以下功能：
-- **拖拽上传**视频文件（支持 MP4/MKV/AVI/MOV/FLV）
-- **可视化参数配置**：Whisper 模型、说话人数、字幕格式、翻译风格等
-- **实时进度条**：6 个模块独立显示，带百分比
-- **实时日志流**：SSE 推送，彩色分级显示（info/debug/warn/error）
-- **字幕下载**：完成后自动刷新列表，支持下载日文/中文字幕
+`requirements_pipeline.txt` 已包含 Flask 和 python-dotenv，无需额外安装。
 
-> **注意**：Web 前端复用了 `pipeline.py` 的 `PipelineRunner` 和 `config.py`，详见 [web_server.py](web_server.py) 和 [templates/index.html](templates/index.html)。
+##### 启动 Web 服务器
+
+```bash
+# 本地访问（仅本机可访问）
+python web_server.py
+
+# 局域网 / 公网访问
+python web_server.py --host 0.0.0.0 --port 5000
+
+# 自定义端口
+python web_server.py --port 8080
+```
+
+启动后终端会打印访问地址，例如 `http://127.0.0.1:5000`。
+
+##### 使用流程
+
+**1. 上传视频**
+
+打开浏览器访问 Web 界面，可以通过以下两种方式添加视频：
+
+- **拖拽上传**：将视频文件直接拖入页面中央的「拖拽或点击」区域
+- **点击上传**：点击上传区域选择本地视频文件
+- **已有视频**：如果 `videos/` 目录下已有视频文件，页面左侧会自动列出
+
+支持格式：`.mp4` `.mkv` `.avi` `.mov` `.flv`
+
+**2. 配置参数**
+
+点击已上传的视频，右侧会展开参数配置面板，可调整：
+
+| 参数 | 说明 | 可选值 |
+|------|------|--------|
+| Whisper 模型 | ASR 模型大小 | large-v2 / large-v3 |
+| 最大说话人数 | pyannote 聚类上限 | 1-10 |
+| 规范化风格 | M4 文本清洗策略 | retain（保留口语）/ clean（正式） |
+| 字幕格式 | 输出格式 | ass（彩色说话人）/ srt（通用） |
+| 翻译风格 | M6 翻译策略 | creative（本地化）/ literal（直译） |
+| 计算精度 | GPU 推理精度 | int8（低显存）/ float16（高精度） |
+| 计算设备 | 推理后端 | cuda / cpu |
+
+**3. 运行流水线**
+
+点击「开始处理」按钮，流水线会依次执行 M1→M6 六个模块。界面实时显示：
+
+- **模块进度条**：6 个模块依次高亮，当前模块显示百分比（如「M3 ASR转写 · 67%」）
+- **实时日志流**：底部日志面板通过 SSE 实时推送，支持 info / debug / warn / error 彩色分级
+- **状态指示**：顶部显示当前状态（运行中 / 完成 / 错误）
+
+> **注意**：同一时间只能运行一个流水线任务。任务运行期间「开始处理」按钮会禁用，完成后恢复。
+
+**4. 下载字幕**
+
+流水线完成后：
+
+- 页面自动显示结果摘要（包含日文和中文两个字幕文件）
+- 点击「下载字幕」可下载 `.ass` 或 `.srt` 文件
+- 也可在「字幕列表」面板中随时下载历史生成的字幕
+
+##### 查看技术讲解页面
+
+Web 服务器还内置了一个模块化技术讲解幻灯片页面（presentation）：
+
+```
+http://127.0.0.1:5000/presentation
+```
+
+使用键盘 **↑↓←→** 或鼠标滚轮翻页，共 20 页，涵盖 M1-M6 每个模块的技术细节、Prompt 设计和容错机制。
+
+##### Web 界面预览
+
+![Web UI 截图](https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=A%20dark%20theme%20web%20application%20interface%20for%20an%20AI%20subtitle%20generation%20pipeline%2C%20modern%20and%20clean%20design%2C%20showing%20video%20upload%20area%20on%20the%20left%20panel%2C%20progress%20bars%20for%206%20pipeline%20modules%20in%20the%20center%2C%20real-time%20log%20panel%20at%20the%20bottom%2C%20with%20Chinese%20text%20labels%2C%20professional%20developer%20tool%20aesthetic&image_size=landscape_16_9)
+
+> **技术架构**：Web 前端使用 Flask 作为 HTTP 服务器，SSE（Server-Sent Events）实现服务端到浏览器的单向实时推送。后端 `WebPipelineManager` 管理事件队列和流水线生命周期。代码入口：[web_server.py](web_server.py)，前端页面：[templates/index.html](templates/index.html)，技术讲解：[templates/presentation.html](templates/presentation.html)。
 
 #### 单独运行某模块
 
